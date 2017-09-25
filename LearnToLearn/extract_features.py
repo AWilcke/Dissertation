@@ -1,4 +1,5 @@
 from torchvision.models import alexnet
+import torch
 import torch.nn as nn
 import torch.utils.model_zoo as model_zoo
 from torch.utils.data import DataLoader
@@ -13,7 +14,7 @@ model_urls = {
     'local': '/home/models/',
 }
 
-batch_size = 4
+BATCH_SIZE = 4
 
 def get_feature_extractor():
     """
@@ -34,17 +35,22 @@ def main(args):
     features for all images.
     """
     dataset = BasicDataset(args.labels_file, args.root_dir)
-    dataloader = DataLoader(dataset, batch_size=batch_size, 
-        shuffle=False, num_workers=batch_size)
+    dataloader = DataLoader(dataset, batch_size=BATCH_SIZE, 
+        shuffle=False, num_workers=BATCH_SIZE)
     net = get_feature_extractor()
+
+    if torch.cuda.is_available():
+        net = net.cuda()
 
     features_out = np.zeros((len(dataset), 4096))
 
     for i, samples in enumerate(dataloader):
         images = samples['image']
+        if torch.cuda.is_available():
+            images = images.cuda()
         images = Variable(images)
-        features = net(images).data.numpy()
-        features_out[i*batch_size:i*batch_size+batch_size] = features
+        features = net(images).cpu().data.numpy()
+        features_out[i*BATCH_SIZE:i*BATCH_SIZE+BATCH_SIZE] = features
         print(i)
 
     with open(args.out,'wb') as f:
