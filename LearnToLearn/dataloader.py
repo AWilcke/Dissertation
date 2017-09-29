@@ -1,8 +1,10 @@
 import os
+import torch
 from torch.utils.data import Dataset
 from torchvision import transforms
 from PIL import Image
 import scipy.io as sio
+import pickle
 
 class BasicDataset(Dataset):
 
@@ -44,4 +46,37 @@ class BasicDataset(Dataset):
         image = Image.open(img_name)
         image = self.preprocess(image)
         sample = {'image' : image, 'label' : self.labels[idx]}
+        return sample
+
+class SVMDataset(Dataset):
+
+    def __init__(self, w0_folder, w1_file, features_file):
+        self.w0_list = [os.path.join(w0_folder, filename) 
+                for filename in os.listdir(w0_folder)]
+        with open(w1_file, 'rb') as f:
+            self.w1 = pickle.load(f)
+
+        with open(features_file, 'rb') as f:
+            self.features = pickle.load(f)
+
+    def __len__(self):
+        return len(self.w0_list)
+
+    def __getitem__(self, idx):
+        with open(self.w0_list[idx], 'rb') as f:
+            sample = pickle.load(f)
+
+        sample['w0'] = torch.from_numpy(sample['w0'])
+        sample['w1'] = torch.from_numpy(self.w1[sample['label']])
+
+        correct_i = torch.from_numpy(self.features[sample['correct_i']])
+        wrong_i = torch.from_numpy(self.features[sample['wrong_i']])
+
+        # take negative of wrong samples and concat with correct samples
+        # makes the hinge loss easier, as it removes the need for the
+        # correct label to determine the correct sign
+        sample['train'] = torch.cat([correct_i, -wrong_i], 0)
+
+        del sample['label'], sample['correct_i'], sample['wrong_i']
+
         return sample
