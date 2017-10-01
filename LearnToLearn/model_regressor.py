@@ -6,6 +6,7 @@ from dataloader import SVMDataset
 from torch.utils.data import DataLoader
 from torch.utils.data.dataloader import default_collate
 import argparse
+from tensorboardX import SummaryWriter
 
 BATCH_SIZE = 1
 NUM_EPOCHS = 1000
@@ -44,16 +45,18 @@ def train(args):
     dataloader = DataLoader(dataset, batch_size=BATCH_SIZE,
             shuffle=True, num_workers=BATCH_SIZE, collate_fn=collate_fn)
 
+    writer = SummaryWriter(args.r)
+    
     net = SVMRegressor()
-
+    
     if torch.cuda.is_available():
         net = net.cuda()
 
     optimizer = optim.SGD(net.parameters(), lr=0.001, momentum=0.9)
 
     for epoch in range(NUM_EPOCHS):
-        for i, samples in enumerate(dataloader):
-
+        for b, samples in enumerate(dataloader):
+            
             running_loss = 0
 
             w0 = samples['w0'].float()
@@ -96,8 +99,10 @@ def train(args):
             total_loss.backward()
             optimizer.step()
 
-            if i % 10 == 0:
-                print("Loss: {:.3f}".format(running_loss/10))
+            if i % 500 == 0:
+                global_step = epoch*len(dataloader) + b
+                writer.add_scalar('train_loss', running_loss/500, global_step)
+
                 running_loss = 0
 
 if __name__ == "__main__":
@@ -106,6 +111,7 @@ if __name__ == "__main__":
     parser.add_argument('-w0')
     parser.add_argument('-w1')
     parser.add_argument('-f', dest='feature')
+    parser.add_argument('-r','--runs', dest='r')
     parser.add_argument('--lr', type=float, default=0.1)
     parser.add_argument('--lr_weight', type=float, default=1)
     args = parser.parse_args()
