@@ -7,7 +7,7 @@ from torch.utils.data import DataLoader
 from torch.utils.data.dataloader import default_collate
 import argparse
 
-BATCH_SIZE = 4
+BATCH_SIZE = 1
 NUM_EPOCHS = 1000
 
 class SVMRegressor(nn.Module):
@@ -53,6 +53,9 @@ def train(args):
 
     for epoch in range(NUM_EPOCHS):
         for i, samples in enumerate(dataloader):
+
+            running_loss = 0
+
             w0 = samples['w0'].float()
             w1 = samples['w1'].float()
             train = [t.float() for t in samples['train']]
@@ -72,24 +75,30 @@ def train(args):
             
             l2_loss = .5 * torch.mean(torch.norm(w1.sub(regressed_w), 2, 1).pow(2))
 
-            classif_losses = Variable(torch.zeros(BATCH_SIZE))
+            hinge_loss = Variable(torch.zeros(1))
             if torch.cuda.is_available():
-                classif_losses = classif_losses.cuda()
+                hinge_loss = hinge_loss.cuda()
 
-            # calculate hinge loss of each regressed svm
+            # calculate summed hinge loss of each regressed svm
             for i in range(BATCH_SIZE):
-                classif_losses[i] = torch.mean(torch.clamp(
+                hinge_loss += torch.mean(torch.clamp(
                     1 - torch.matmul(
                         regressed_w[i][:-1], train[i].transpose(0,1)).add(regressed_w[i][-1]),
                     min=0))
+            
+            # average
+            hinge_loss.div_(BATCH_SIZE)
 
-            classif_loss = torch.mean(classif_losses)
-
-            total_loss  = args.lr * (l2_loss + args.lr_weight * classif_loss)
+            total_loss  = args.lr * (l2_loss + args.lr_weight * hinge_loss)
+            
+            running_loss += total_loss.data.cpu()[0]
 
             total_loss.backward()
-
             optimizer.step()
+
+            if i % 10 == 0:
+                print("Loss: {:.3f}".format(running_loss/10))
+                running_loss = 0
 
 if __name__ == "__main__":
     

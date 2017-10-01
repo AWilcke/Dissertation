@@ -75,7 +75,7 @@ class SVMDataset(Dataset):
             sample = pickle.load(f)
 
         sample['w0'] = torch.from_numpy(sample['w0'])
-        sample['w1'] = torch.from_numpy(self.w1[sample['label']])
+        sample['w1'] = torch.from_numpy(self.w1[sample['label']-1])
 
         correct_i = torch.from_numpy(self.features[sample['correct_i']])
         wrong_i = torch.from_numpy(self.features[sample['wrong_i']])

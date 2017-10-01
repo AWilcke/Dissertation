@@ -104,7 +104,7 @@ if __name__ == '__main__':
             # y_test[wrong_labels] = 0
 
 
-            for n in range(1,20):
+            for n in range(1,21):
                 for c in (1e-2, 1e-1, 1, 10, 100):
                     for s in range(5):
                         out_file = os.path.join(
