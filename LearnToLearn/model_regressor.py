@@ -30,6 +30,25 @@ class SVMRegressor(nn.Module):
 
     def forward(self, x):
         return self.regression(x)
+    
+    def loss(self, regressed_w, w1, train):
+        l2_loss = .5 * torch.mean(torch.norm(w1.sub(regressed_w), 2, 1).pow(2))
+
+        hinge_loss = Variable(torch.zeros(1))
+        if torch.cuda.is_available():
+            hinge_loss = hinge_loss.cuda()
+
+        # calculate summed hinge loss of each regressed svm
+        for i in range(BATCH_SIZE):
+            hinge_loss += torch.mean(torch.clamp(
+                1 - torch.matmul(
+                    regressed_w[i][:-1], train[i].transpose(0,1)).add(regressed_w[i][-1]),
+                min=0))
+        
+        # average
+        hinge_loss.div_(BATCH_SIZE)
+
+        return l2_loss, hinge_loss
 
 def collate_fn(batch):
     # default collate w0, w1
@@ -41,7 +60,7 @@ def collate_fn(batch):
     return out
 
 def train(args):
-    dataset = SVMDataset(args.w0, args.w1, args.feature)
+    dataset = SVMDataset(args.w0, args.w1, args.feature, split='train')
     dataloader = DataLoader(dataset, batch_size=BATCH_SIZE,
             shuffle=True, num_workers=BATCH_SIZE, collate_fn=collate_fn)
 
@@ -55,9 +74,14 @@ def train(args):
     optimizer = optim.SGD(net.parameters(), lr=0.001, momentum=0.9)
 
     for epoch in range(NUM_EPOCHS):
+        # for keeping track of loss
+        running_total, running_l2, running_hinge = 0, 0, 0
+
         for b, samples in enumerate(dataloader):
             
-            running_loss = 0
+            if b % args.print_every_n == 0:
+                print("Global step: {}\nEpoch: {}".format(
+                    epoch*len(dataloader) + b, epoch), end='\r')
 
             w0 = samples['w0'].float()
             w1 = samples['w1'].float()
@@ -76,34 +100,27 @@ def train(args):
 
             optimizer.zero_grad()
             
-            l2_loss = .5 * torch.mean(torch.norm(w1.sub(regressed_w), 2, 1).pow(2))
-
-            hinge_loss = Variable(torch.zeros(1))
-            if torch.cuda.is_available():
-                hinge_loss = hinge_loss.cuda()
-
-            # calculate summed hinge loss of each regressed svm
-            for i in range(BATCH_SIZE):
-                hinge_loss += torch.mean(torch.clamp(
-                    1 - torch.matmul(
-                        regressed_w[i][:-1], train[i].transpose(0,1)).add(regressed_w[i][-1]),
-                    min=0))
-            
-            # average
-            hinge_loss.div_(BATCH_SIZE)
+            l2_loss, hinge_loss = net.loss(regressed_w, w1, train)
+            running_l2 += l2_loss.data[0]
+            running_hinge += hinge_loss.data[0]
 
             total_loss  = args.lr * (l2_loss + args.lr_weight * hinge_loss)
-            
-            running_loss += total_loss.data.cpu()[0]
+            running_total += total_loss.data[0]
 
             total_loss.backward()
             optimizer.step()
-
-            if i % 500 == 0:
+            
+            # write to tensorboard
+            if b % args.write_every_n == 0 and b != 0:
                 global_step = epoch*len(dataloader) + b
-                writer.add_scalar('train_loss', running_loss/500, global_step)
+                writer.add_scalar('train_total_loss', 
+                        running_total/args.write_every_n, global_step)
+                writer.add_scalar('train_l2_loss',
+                        running_l2/args.write_every_n, global_step)
+                writer.add_scalar('train_hinge_loss',
+                        running_hinge/args.write_every_n, global_step)
 
-                running_loss = 0
+                running_total, running_l2, running_hinge = 0, 0, 0
 
 if __name__ == "__main__":
     
@@ -114,6 +131,8 @@ if __name__ == "__main__":
     parser.add_argument('-r','--runs', dest='r')
     parser.add_argument('--lr', type=float, default=0.1)
     parser.add_argument('--lr_weight', type=float, default=1)
+    parser.add_argument('--write_every_n', type=int, default=500)
+    parser.add_argument('--print_every_n', type=int, default=10)
     args = parser.parse_args()
 
     train(args)

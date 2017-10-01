@@ -68,6 +68,7 @@ if __name__ == '__main__':
     parser.add_argument('-y')
     parser.add_argument('-o')
     parser.add_argument('-s', '--stage', dest='s')
+    parser.add_argument('--train_split', type=float, default=0.9)
 
     args = parser.parse_args()
 
@@ -76,6 +77,7 @@ if __name__ == '__main__':
 
     y = sio.loadmat(args.y)['labels'][0]
     labels = np.unique(y)
+    
 
     progress = progressbar.ProgressBar(
             widgets=[progressbar.Bar(), ' ', progressbar.ETA()])
@@ -86,16 +88,20 @@ if __name__ == '__main__':
         # create folder if didnt exist
         if not os.path.exists(args.o):
             os.mkdir(args.o)
+            os.mkdir(os.path.join(args.o, 'train'))
+            os.mkdir(os.path.join(args.o, 'val'))
         
-        # if did exist, and not empty, 
-        # find which label to start from
-        elif os.listdir(args.o):
-            last_file = sorted(os.listdir(args.o), key=lambda x : int(x.split('_')[1]))[-1]
-            last_label = int(last_file.split('_')[1])
-            labels = [label for label in labels if label>=last_label]
-            print("Resuming from label {}".format(last_label))
+        # randomly pick labels for training and validation
+        train_labels = set(np.random.choice(
+            labels, 
+            size=int(args.train_split*len(labels)),
+            replace=False))
+        # train_labels = set(labels[:int(args.train_split*len(labels))])
+        print(train_labels)
         
         for label in progress(labels):
+
+            split = 'train' if label in train_labels else 'val'
 
             correct_labels = np.where(y==label)[0]
             wrong_labels = np.where(y!=label)[0]
@@ -109,6 +115,7 @@ if __name__ == '__main__':
                     for s in range(5):
                         out_file = os.path.join(
                                                 args.o, 
+                                                split,
                                                 'label_{}_n_{}_c_{:.0e}_{}.pickle'.format(
                                                     label, n, c, s)
                                                 )

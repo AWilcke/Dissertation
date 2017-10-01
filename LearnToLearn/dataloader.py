@@ -50,16 +50,17 @@ class BasicDataset(Dataset):
 
 class SVMDataset(Dataset):
 
-    def __init__(self, w0_folder, w1_file, features_file):
+    def __init__(self, w0_folder, w1_file, features_file, split='train'):
         """
         Args:
             w0_folder (string) : path to folder where w0 files are stored
             w1_file (string) : path to file where w1 files are stored
             features_file (string) : path to file where features are stored
+            split (string) : train or val split
         """
 
-        self.w0_list = [os.path.join(w0_folder, filename) 
-                for filename in os.listdir(w0_folder)]
+        self.w0_list = [os.path.join(w0_folder, split, filename) 
+                for filename in os.listdir(os.path.join(w0_folder, split))]
 
         with open(w1_file, 'rb') as f:
             self.w1 = pickle.load(f)
