@@ -93,8 +93,7 @@ if __name__ == '__main__':
             last_file = sorted(os.listdir(args.o), key=lambda x : int(x.split('_')[1]))[-1]
             last_label = int(last_file.split('_')[1])
             labels = [label for label in labels if label>=last_label]
-
-        print(labels)
+            print("Resuming from label {}".format(last_label))
         
         for label in progress(labels):
 
@@ -110,7 +109,7 @@ if __name__ == '__main__':
                     for s in range(5):
                         out_file = os.path.join(
                                                 args.o, 
-                                                'label_{}_n_{}_c_{}_{}.pickle'.format(
+                                                'label_{}_n_{}_c_{:.0e}_{}.pickle'.format(
                                                     label, n, c, s)
                                                 )
 
