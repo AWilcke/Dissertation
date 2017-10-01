@@ -1,4 +1,5 @@
 from sklearn.svm import LinearSVC
+import progressbar
 from sklearn.model_selection import GridSearchCV
 import numpy as np
 import pickle
@@ -76,10 +77,27 @@ if __name__ == '__main__':
     y = sio.loadmat(args.y)['labels'][0]
     labels = np.unique(y)
 
+    progress = progressbar.ProgressBar(
+            widgets=[progressbar.Bar(), ' ', progressbar.ETA()])
+
     # training small samples
     if args.s == 'w0':
 
-        for label in labels:
+        # create folder if didnt exist
+        if not os.path.exists(args.o):
+            os.mkdir(args.o)
+        
+        # if did exist, and not empty, 
+        # find which label to start from
+        elif os.listdir(args.o):
+            last_file = sorted(os.listdir(args.o), key=lambda x : int(x.split('_')[1]))[-1]
+            last_label = int(last_file.split('_')[1])
+            labels = [label for label in labels if label>=last_label]
+
+        print(labels)
+        
+        for label in progress(labels):
+
             correct_labels = np.where(y==label)[0]
             wrong_labels = np.where(y!=label)[0]
             # y_test = np.zeros_like(y)
@@ -90,33 +108,34 @@ if __name__ == '__main__':
             for n in range(1,20):
                 for c in (1e-2, 1e-1, 1, 10, 100):
                     for s in range(5):
-                        w, correct_i, wrong_i = train(x, 
-                                correct_labels, wrong_labels, n, c)
-                        # sample = np.random.choice(len(y), size=1000)
-                        # print(w.score(x[sample], y_test[sample]))
+                        out_file = os.path.join(
+                                                args.o, 
+                                                'label_{}_n_{}_c_{}_{}.pickle'.format(
+                                                    label, n, c, s)
+                                                )
 
-                        sample = {'w0':w,
-                                'wrong_i':wrong_i,
-                                'correct_i':correct_i,
-                                'label':label
-                                }
+                        if not os.path.exists(out_file):
 
-                        with open(
-                                os.path.join(
-                                    args.o, 
-                                    'label_{}_n_{}_c_{}_{}.pickle'.format(
-                                        label, n, c, s)
-                                    ),
-                                'wb') as f:
-                            pickle.dump(sample, f)
+                            w, correct_i, wrong_i = train(x, 
+                                    correct_labels, wrong_labels, n, c)
+                            # sample = np.random.choice(len(y), size=1000)
+                            # print(w.score(x[sample], y_test[sample]))
+
+                            sample = {'w0':w,
+                                    'wrong_i':wrong_i,
+                                    'correct_i':correct_i,
+                                    'label':label
+                                    }
+
+                            with open(out_file, 'wb') as f:
+                                pickle.dump(sample, f)
     
-        # train large ground truth models
+    # train large ground truth models
     elif args.s == 'w1':
 
         w1_matrix = []
 
-        for label in labels:
-            print(label)
+        for label in progress(labels):
 
             correct_labels = np.where(y==label)[0]
             wrong_labels = np.where(y!=label)[0]
