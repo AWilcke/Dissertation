@@ -80,7 +80,7 @@ def train(args):
         for b, samples in enumerate(dataloader):
             
             if b % args.print_every_n == 0:
-                print("Global step: {}\nEpoch: {}".format(
+                print("Global step: {}, Epoch: {}".format(
                     epoch*len(dataloader) + b, epoch), end='\r')
 
             w0 = samples['w0'].float()
