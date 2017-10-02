@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.optim as optim
+from torch.optim import lr_scheduler
 from torch.autograd import Variable
 from dataloader import SVMDataset
 from torch.utils.data import DataLoader
@@ -74,11 +75,22 @@ def train(args):
     writer = SummaryWriter(args.r)
     
     net = SVMRegressor()
+
+    # load model if exists
+    if not os.path.exists(args.ckpt):
+        os.mkdir(args.ckpt)
+    if os.listdir(args.ckpt):
+        latest_model = sorted(os.listdir(args.ckpt),
+                key=lambda x : int(x.split('.')[0]))[-1]
+        print("Restoring from model {}".format(latest_model))
+        net.load_state_dict(torch.load(
+            os.path.join(args.ckpt, latest_model)))
     
     if torch.cuda.is_available():
         net = net.cuda()
 
     optimizer = optim.SGD(net.parameters(), lr=args.lr, momentum=0.9)
+    lr_schedule = lr_scheduler.MultiStepLR(optimizer, [1e5, 3e5], gamma=0.1)
 
     for epoch in range(NUM_EPOCHS):
         # for keeping track of loss
@@ -113,7 +125,7 @@ def train(args):
 
             total_loss.backward()
             optimizer.step()
-
+            lr_schedule.step()
             
             # write to tensorboard
             if b % args.write_every_n == 0 and b != 0:
@@ -175,6 +187,18 @@ def train(args):
                         os.path.join(args.ckpt, "{}.ckpt".format(global_step))
                         )
 
+                # remove old models
+                models = [os.path.join(args.ckpt, f) for 
+                        f in os.listdir(args.ckpt) if ".ckpt" in f]
+                models = sorted(models, 
+                        key=lambda x : int(os.path.basename(x).split('.')[0]),
+                        reverse=True)
+
+                while len(models) > args.n_models_to_keep:
+                    os.remove(models.pop())
+                    
+
+
 
 if __name__ == "__main__":
     
@@ -190,6 +214,7 @@ if __name__ == "__main__":
     parser.add_argument('--print_every_n', type=int, default=10)
     parser.add_argument('--validate_every_n', type=int, default=5000)
     parser.add_argument('--save_every_n', type=int, default=5000)
+    parser.add_argument('--n_models_to_keep', type=int, default=3)
     args = parser.parse_args()
 
     train(args)
