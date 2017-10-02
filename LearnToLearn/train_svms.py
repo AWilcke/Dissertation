@@ -109,15 +109,15 @@ if __name__ == '__main__':
             # y_test[correct_labels] = 1
             # y_test[wrong_labels] = 0
 
-
+            counter = 0
             for n in range(1,21):
                 for c in (1e-2, 1e-1, 1, 10, 100):
                     for s in range(5):
                         out_file = os.path.join(
                                                 args.o, 
                                                 split,
-                                                'label_{}_n_{}_c_{:.0e}_{}.pickle'.format(
-                                                    label, n, c, s)
+                                                'label_{}_{}'.format(
+                                                    label, counter)
                                                 )
 
                         if not os.path.exists(out_file):
@@ -135,6 +135,7 @@ if __name__ == '__main__':
 
                             with open(out_file, 'wb') as f:
                                 pickle.dump(sample, f)
+                        counter += 1
     
     # train large ground truth models
     elif args.s == 'w1':
