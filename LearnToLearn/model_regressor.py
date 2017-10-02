@@ -11,7 +11,7 @@ from tensorboardX import SummaryWriter
 import os
 
 BATCH_SIZE = 4 # do not set to 1, as BatchNorm won't work
-NUM_EPOCHS = 1000
+NUM_EPOCHS = 10
 
 class SVMRegressor(nn.Module):
 
@@ -41,14 +41,14 @@ class SVMRegressor(nn.Module):
             hinge_loss = hinge_loss.cuda()
 
         # calculate summed hinge loss of each regressed svm
-        for i in range(BATCH_SIZE):
+        for i in range(regressed_w.data.shape[0]):
             hinge_loss += torch.mean(torch.clamp(
                 1 - torch.matmul(
                     regressed_w[i][:-1], train[i].transpose(0,1)).add(regressed_w[i][-1]),
                 min=0))
         
         # average
-        hinge_loss.div_(BATCH_SIZE)
+        hinge_loss.div_(regressed_w.data.shape[0])
 
         return l2_loss, hinge_loss
 
@@ -65,12 +65,12 @@ def train(args):
     # training datasets
     dataset = SVMDataset(args.w0, args.w1, args.feature, split='train')
     dataloader = DataLoader(dataset, batch_size=BATCH_SIZE,
-            shuffle=True, num_workers=BATCH_SIZE, collate_fn=collate_fn)
+            shuffle=True, num_workers=8, collate_fn=collate_fn)
 
     # validation datasets
     val_dataset = SVMDataset(args.w0, args.w1, args.feature, split='val')
     val_dataloader = DataLoader(val_dataset, batch_size=BATCH_SIZE,
-            shuffle=False, num_workers=BATCH_SIZE, collate_fn=collate_fn)
+            shuffle=False, num_workers=8, collate_fn=collate_fn)
 
     writer = SummaryWriter(args.r)
     
@@ -90,7 +90,8 @@ def train(args):
         net = net.cuda()
 
     optimizer = optim.SGD(net.parameters(), lr=args.lr, momentum=0.9)
-    lr_schedule = lr_scheduler.MultiStepLR(optimizer, [1e5, 3e5], gamma=0.1)
+    # lr step after 3 and 6 epochs
+    lr_schedule = lr_scheduler.MultiStepLR(optimizer, [3, 6], gamma=0.1)
 
     for epoch in range(NUM_EPOCHS):
         # for keeping track of loss
@@ -125,7 +126,6 @@ def train(args):
 
             total_loss.backward()
             optimizer.step()
-            lr_schedule.step()
             
             # write to tensorboard
             if b % args.write_every_n == 0 and b != 0:
@@ -196,7 +196,9 @@ def train(args):
 
                 while len(models) > args.n_models_to_keep:
                     os.remove(models.pop())
-                    
+        
+        # after epoch is done, step lr scheduler
+        lr_schedule.step()
 
 
 
