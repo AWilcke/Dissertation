@@ -101,7 +101,7 @@ def train(args):
             
             global_step = epoch*len(dataloader) + b
             
-            if b % args.print_every_n == 0:
+            if global_step % args.print_every_n == 0:
                 print("Global step: {}, Epoch: {}".format(
                     global_step, epoch), end='\r')
 
@@ -128,7 +128,7 @@ def train(args):
             optimizer.step()
             
             # write to tensorboard
-            if b % args.write_every_n == 0 and b != 0:
+            if global_step % args.write_every_n == 0 and global_step != 0:
 
                 writer.add_scalar('total_loss/train', 
                         (running_l2 + args.lr_weight * running_hinge)/args.write_every_n,
@@ -144,7 +144,7 @@ def train(args):
                 running_l2, running_hinge = 0, 0
 
             # run validation cycle
-            if b % args.validate_every_n == 0 and b!=0:
+            if global_step % args.validate_every_n == 0 and global_step != 0:
                 
                 # clear up space on gpu
                 del w0, w1, train
@@ -181,7 +181,7 @@ def train(args):
                 net.train()
             
             # save model
-            if b % args.save_every_n == 0 and b!=0:
+            if global_step % args.save_every_n == 0 and global_step != 0:
 
                 torch.save(net.state_dict(), 
                         os.path.join(args.ckpt, "{}.ckpt".format(global_step))
