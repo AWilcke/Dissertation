@@ -96,9 +96,9 @@ def train(args):
     if torch.cuda.is_available():
         net = net.cuda()
 
-    optimizer = optim.SGD(net.parameters(), lr=args.lr, momentum=0.9)
+    optimizer = optim.SGD(net.parameters(), lr=args.lr, momentum=args.momentum)
     # lr step after 3 and 6 epochs
-    lr_schedule = lr_scheduler.MultiStepLR(optimizer, [3, 6], gamma=0.1)
+    lr_schedule = lr_scheduler.MultiStepLR(optimizer, args.steps, gamma=args.step_gamma)
 
     for epoch in range(start_epoch, NUM_EPOCHS):
         # for keeping track of loss
@@ -214,13 +214,21 @@ def train(args):
 if __name__ == "__main__":
     
     parser = argparse.ArgumentParser()
+    # io args
     parser.add_argument('-w0')
     parser.add_argument('-w1')
     parser.add_argument('-f', dest='feature')
     parser.add_argument('-r','--runs', dest='r')
     parser.add_argument('--ckpt')
+
+    # training args
     parser.add_argument('--lr', type=float, default=1e-3)
+    parser.add_argument('--momentum', type=float, default=0.9)
     parser.add_argument('--lr_weight', type=float, default=1)
+    parser.add_argument('--steps', type=int, default=[3,6])
+    parser.add_argument('--step_gamma', type=float, default=0.1)
+
+    # logging args
     parser.add_argument('--write_every_n', type=int, default=500)
     parser.add_argument('--print_every_n', type=int, default=10)
     parser.add_argument('--validate_every_n', type=int, default=5000)
