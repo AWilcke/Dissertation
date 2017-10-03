@@ -76,15 +76,22 @@ def train(args):
     
     net = SVMRegressor()
 
+    
+    start_epoch = 0
+
     # load model if exists
     if not os.path.exists(args.ckpt):
         os.mkdir(args.ckpt)
     if os.listdir(args.ckpt):
+
         latest_model = sorted(os.listdir(args.ckpt),
                 key=lambda x : int(x.split('.')[0]))[-1]
         print("Restoring from model {}".format(latest_model))
         net.load_state_dict(torch.load(
             os.path.join(args.ckpt, latest_model)))
+        
+        #update start epoch
+        start_epoch = int(latest_model.split('.')[0])
     
     if torch.cuda.is_available():
         net = net.cuda()
@@ -93,9 +100,12 @@ def train(args):
     # lr step after 3 and 6 epochs
     lr_schedule = lr_scheduler.MultiStepLR(optimizer, [3, 6], gamma=0.1)
 
-    for epoch in range(NUM_EPOCHS):
+    for epoch in range(start_epoch, NUM_EPOCHS):
         # for keeping track of loss
         running_l2, running_hinge = 0, 0
+
+        # step lr scheduler so epoch is 1-indexed
+        lr_schedule.step() 
 
         for b, samples in enumerate(dataloader):
             
@@ -144,7 +154,7 @@ def train(args):
                 running_l2, running_hinge = 0, 0
 
             # run validation cycle
-            if global_step % args.validate_every_n == 0 and global_step != 0:
+            if global_step % args.validate_every_n == 0:
                 
                 # clear up space on gpu
                 del w0, w1, train
@@ -180,25 +190,24 @@ def train(args):
 
                 net.train()
             
-            # save model
-            if global_step % args.save_every_n == 0 and global_step != 0:
-
-                torch.save(net.state_dict(), 
-                        os.path.join(args.ckpt, "{}.ckpt".format(global_step))
-                        )
-
-                # remove old models
-                models = [os.path.join(args.ckpt, f) for 
-                        f in os.listdir(args.ckpt) if ".ckpt" in f]
-                models = sorted(models, 
-                        key=lambda x : int(os.path.basename(x).split('.')[0]),
-                        reverse=True)
-
-                while len(models) > args.n_models_to_keep:
-                    os.remove(models.pop())
         
-        # after epoch is done, step lr scheduler
-        lr_schedule.step()
+
+        # save model
+        if (epoch + 1) % args.save_every_n == 0:
+
+            torch.save(net.state_dict(),
+                    os.path.join(args.ckpt, "{}.ckpt".format(epoch+1))
+                    )
+
+            # remove old models
+            models = [os.path.join(args.ckpt, f) for 
+                    f in os.listdir(args.ckpt) if ".ckpt" in f]
+            models = sorted(models, 
+                    key=lambda x : int(os.path.basename(x).split('.')[0]),
+                    reverse=True)
+
+            while len(models) > args.n_models_to_keep:
+                os.remove(models.pop())
 
 
 
@@ -215,7 +224,7 @@ if __name__ == "__main__":
     parser.add_argument('--write_every_n', type=int, default=500)
     parser.add_argument('--print_every_n', type=int, default=10)
     parser.add_argument('--validate_every_n', type=int, default=5000)
-    parser.add_argument('--save_every_n', type=int, default=5000)
+    parser.add_argument('--save_every_n', type=int, default=1)
     parser.add_argument('--n_models_to_keep', type=int, default=3)
     args = parser.parse_args()
 
