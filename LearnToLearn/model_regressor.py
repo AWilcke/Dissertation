@@ -225,7 +225,7 @@ if __name__ == "__main__":
     parser.add_argument('--lr', type=float, default=1e-3)
     parser.add_argument('--momentum', type=float, default=0.9)
     parser.add_argument('--lr_weight', type=float, default=1)
-    parser.add_argument('--steps', type=int, default=[3,6])
+    parser.add_argument('--steps', nargs='+', type=int, default=[3,6])
     parser.add_argument('--step_gamma', type=float, default=0.1)
 
     # logging args
