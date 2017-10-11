@@ -45,10 +45,10 @@ def train(x, correct_i, wrong_i, n_images=None, c=None, w0=True):
     shuffle = np.random.permutation(2*n_images)
     
     if w0:
-        model = LinearSVC(loss='hinge', C=c)
+        model = LinearSVC(dual=False, C=c)
         model.fit(x[shuffle], y[shuffle])
     else:
-        svm = LinearSVC(loss='hinge')
+        svm = LinearSVC(dual=False)
 
         # find best value of C by 10 x-validation
         gridsearch = GridSearchCV(svm, 

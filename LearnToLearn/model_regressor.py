@@ -10,7 +10,7 @@ import argparse
 from tensorboardX import SummaryWriter
 import os
 
-BATCH_SIZE = 4 # do not set to 1, as BatchNorm won't work
+BATCH_SIZE = 64 # do not set to 1, as BatchNorm won't work
 NUM_EPOCHS = 10
 
 class SVMRegressor(nn.Module):
