@@ -92,12 +92,13 @@ if __name__ == '__main__':
             os.mkdir(os.path.join(args.o, 'val'))
         
         # randomly pick labels for training and validation
+
+        np.random.seed(42) # fix seed
         train_labels = set(np.random.choice(
             labels, 
             size=int(args.train_split*len(labels)),
             replace=False))
-        # train_labels = set(labels[:int(args.train_split*len(labels))])
-        print(train_labels)
+        np.random.seed() # re-seed for next random calls
         
         for label in progress(labels):
 
