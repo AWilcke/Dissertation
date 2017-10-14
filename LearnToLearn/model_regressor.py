@@ -97,8 +97,13 @@ def train(args):
         net = net.cuda()
 
     optimizer = optim.SGD(net.parameters(), lr=args.lr, momentum=args.momentum)
-    # lr step after 3 and 6 epochs
+
+    # lr step
     lr_schedule = lr_scheduler.MultiStepLR(optimizer, args.steps, gamma=args.step_gamma)
+
+    #update optimiser, in case loading model
+    for i in range(start_epoch):
+        lr_schedule.step()
 
     for epoch in range(start_epoch, NUM_EPOCHS):
         # for keeping track of loss
