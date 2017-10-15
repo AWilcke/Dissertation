@@ -7,7 +7,7 @@ import scipy.io as sio
 import argparse
 import os
 
-def train(x, correct_i, wrong_i, n_images=None, c=None, w0=True):
+def train(x, correct_i, wrong_i, n_images=None, c=None, loss="squared hinge", w0=True):
     """
     Train SVM on a random samples of size n_images from x and y,
     using C as regularisation parameter.
@@ -22,6 +22,8 @@ def train(x, correct_i, wrong_i, n_images=None, c=None, w0=True):
                          not needed if w0=False
         c (float) : regularisation parameter to use for svm training
                     not needed if w0=False
+        loss (str) : loss to train the SVM with, either "hinge" or
+                    "squared hinge"
         w0 (bool) : whether training small or large svm
     Returns:
         model.coef_ (np.ndarray) : weight vector of the trained svm
@@ -45,10 +47,10 @@ def train(x, correct_i, wrong_i, n_images=None, c=None, w0=True):
     shuffle = np.random.permutation(2*n_images)
     
     if w0:
-        model = LinearSVC(dual=False, C=c)
+        model = LinearSVC(dual=False, C=c, loss=loss)
         model.fit(x[shuffle], y[shuffle])
     else:
-        svm = LinearSVC(dual=False)
+        svm = LinearSVC(dual=False, loss=loss)
 
         # find best value of C by 10 x-validation
         gridsearch = GridSearchCV(svm, 
@@ -68,6 +70,7 @@ if __name__ == '__main__':
     parser.add_argument('-y')
     parser.add_argument('-o')
     parser.add_argument('-s', '--stage', dest='s')
+    parser.add_argument('--loss', type=str, default="squared hinge")
     parser.add_argument('--train_split', type=float, default=0.9)
 
     args = parser.parse_args()
@@ -124,7 +127,8 @@ if __name__ == '__main__':
                         if not os.path.exists(out_file):
 
                             w, correct_i, wrong_i = train(x, 
-                                    correct_labels, wrong_labels, n, c)
+                                    correct_labels, wrong_labels, n, c,
+                                    loss=args.loss)
                             # sample = np.random.choice(len(y), size=1000)
                             # print(w.score(x[sample], y_test[sample]))
 
@@ -148,7 +152,8 @@ if __name__ == '__main__':
             correct_labels = np.where(y==label)[0]
             wrong_labels = np.where(y!=label)[0]
             w, _ , _ = train(x,
-                    correct_labels, wrong_labels, w0=False)
+                    correct_labels, wrong_labels, 
+                    loss=args.loss, w0=False)
             w1_matrix.append(w)
 
         with open(os.path.join(
