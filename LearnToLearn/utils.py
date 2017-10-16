@@ -137,7 +137,7 @@ if __name__ == "__main__":
             net = net.cuda()
         net.train(False)
 
-    params = {'loss' : args.loss}
+    params = {'loss' : args.loss, 'dual':False}
     if args.C:
         params['C'] = args.C
 
