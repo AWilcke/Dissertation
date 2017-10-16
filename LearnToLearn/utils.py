@@ -1,13 +1,14 @@
 import numpy as np
-from sklearn import LinearSVC
+from sklearn.svm import LinearSVC
 import torch
 from torch.autograd import Variable
 import argparse
-from collections import defautdict
+from collections import defaultdict
 import pickle
 from scipy.io import loadmat
 from model_regressor import SVMRegressor
 import os
+import progressbar
 
 def retrain_svm(x, y, net, c=1):
     """
@@ -71,10 +72,11 @@ def score_svm(sample, data, labels, net, use_w0=False, refit=False, num_samples=
             raise Exception("Must pass a net if use_w0=False")
 
         w0 = Variable(torch.from_numpy(w0).float())
+        w0 = w0.view(1, -1)
         if torch.cuda.is_available():
             w0 = w0.cuda()
         w0 = net(w0)
-        w0 = w0.data.cpu().nump()
+        w0 = w0.data.cpu().numpy().reshape(-1)
 
 
     if refit:
@@ -85,7 +87,8 @@ def score_svm(sample, data, labels, net, use_w0=False, refit=False, num_samples=
     else:
         svm = LinearSVC(**svm_params)
         svm.coef_ = w0[:-1].reshape(1,-1)
-        svm.intercept = w0[-1]
+        svm.intercept_ = w0[-1]
+        svm.classes_ = np.array([0,1])
     
     # get all samples that were not used for training this SVM
     test_correct_i = list(filter(lambda x : x not in correct_i, np.where(labels==label)[0]))
@@ -93,8 +96,8 @@ def score_svm(sample, data, labels, net, use_w0=False, refit=False, num_samples=
     
     acc = []
     for i in range(num_samples):
-        test_i = np.concatenate(test_correct_i, 
-                np.random.choice(test_wrong_i, size=len(test_correct_i), replace=False))
+        test_i = np.concatenate((test_correct_i, 
+                np.random.choice(test_wrong_i, size=len(test_correct_i), replace=False)))
 
         score = svm.score(data[test_i], [1]*len(test_correct_i) + [0]*len(test_correct_i)) 
         acc.append(score)
@@ -120,22 +123,27 @@ if __name__ == "__main__":
     with open(args.x, 'rb') as f:
         x = pickle.load(f)
 
-    y = loadmat(args.py)['labels'][0]
+    y = loadmat(args.y)['labels'][0]
 
     net = SVMRegressor()
     net.load_state_dict(torch.load(args.ckpt))
+
+    if torch.cuda.is_available():
+        net = net.cuda()
+    net.train(False)
 
     params = {}
     if args.C:
         params['C'] = args.C
 
-    scores = defautdict(list)
+    scores = defaultdict(list)
 
     for sample in (os.path.join(args.val_path, x) for x in os.listdir(args.val_path)):
-        with open(sample) as f:
+        print(sample)
+        with open(sample, 'rb') as f:
             s = pickle.load(f)
 
-        n, acc = score_svm(s, x, y, net, args.use_w0, args.refit, args.n_samples, params)
+        n, acc = score_svm(s, x, y, net, args.usew0, args.refit, args.n_samples, params)
 
         scores[n].append(acc)
 
