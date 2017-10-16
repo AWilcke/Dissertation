@@ -81,9 +81,11 @@ def score_svm(sample, data, labels, net, use_w0=False, refit=False, num_samples=
 
     if refit:
         svm = LinearSVC(regressed_w=w0, **svm_params)
-        shuffle = np.random.permutation(len(correct_i))
-        y = [1] * len(correct_i) + [0] * len(wrong_i)
-        svm.fit(data[correct_i + wrong_i][shuffle], y[shuffle])
+        shuffle = np.random.permutation(2*len(correct_i))
+        y = np.array([1] * len(correct_i) + [0] * len(wrong_i))
+        print("{}, {}, {}".format(y, len(correct_i), len(wrong_i)))
+        index = np.concatenate((correct_i, wrong_i))
+        svm.fit(data[index][shuffle], y[shuffle])
     else:
         svm = LinearSVC(**svm_params)
         svm.coef_ = w0[:-1].reshape(1,-1)
@@ -116,6 +118,7 @@ if __name__ == "__main__":
     parser.add_argument('--refit', type=bool, default=False)
     parser.add_argument('--n_samples', type=int, default=10)
     parser.add_argument('-C', type=float)
+    parser.add_argument('--loss', type=str, default="squared_hinge")
 
     args = parser.parse_args()
 
@@ -124,15 +127,17 @@ if __name__ == "__main__":
         x = pickle.load(f)
 
     y = loadmat(args.y)['labels'][0]
+    if args.usew0:
+        net = None
+    else:
+        net = SVMRegressor()
+        net.load_state_dict(torch.load(args.ckpt))
 
-    net = SVMRegressor()
-    net.load_state_dict(torch.load(args.ckpt))
+        if torch.cuda.is_available():
+            net = net.cuda()
+        net.train(False)
 
-    if torch.cuda.is_available():
-        net = net.cuda()
-    net.train(False)
-
-    params = {}
+    params = {'loss' : args.loss}
     if args.C:
         params['C'] = args.C
 
