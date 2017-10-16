@@ -7,7 +7,7 @@ import scipy.io as sio
 import argparse
 import os
 
-def train(x, correct_i, wrong_i, n_images=None, c=None, loss="squared hinge", w0=True):
+def train(x, correct_i, wrong_i, n_images=None, c=None, loss="squared_hinge", w0=True):
     """
     Train SVM on a random samples of size n_images from x and y,
     using C as regularisation parameter.
@@ -70,7 +70,7 @@ if __name__ == '__main__':
     parser.add_argument('-y')
     parser.add_argument('-o')
     parser.add_argument('-s', '--stage', dest='s')
-    parser.add_argument('--loss', type=str, default="squared hinge")
+    parser.add_argument('--loss', type=str, default="squared_hinge")
     parser.add_argument('--train_split', type=float, default=0.9)
 
     args = parser.parse_args()
@@ -85,6 +85,15 @@ if __name__ == '__main__':
     progress = progressbar.ProgressBar(
             widgets=[progressbar.Bar(), ' ', progressbar.ETA()])
 
+    # randomly pick labels for training and validation
+
+    np.random.seed(42) # fix seed
+    train_labels = np.random.choice(
+        labels, 
+        size=int(args.train_split*len(labels)),
+        replace=False)
+    np.random.seed() # re-seed for next random calls
+
     # training small samples
     if args.s == 'w0':
 
@@ -94,24 +103,16 @@ if __name__ == '__main__':
             os.mkdir(os.path.join(args.o, 'train'))
             os.mkdir(os.path.join(args.o, 'val'))
         
-        # randomly pick labels for training and validation
-
-        np.random.seed(42) # fix seed
-        train_labels = set(np.random.choice(
-            labels, 
-            size=int(args.train_split*len(labels)),
-            replace=False))
-        np.random.seed() # re-seed for next random calls
         
         for label in progress(labels):
 
             split = 'train' if label in train_labels else 'val'
 
             correct_labels = np.where(y==label)[0]
-            wrong_labels = np.where(y!=label)[0]
-            # y_test = np.zeros_like(y)
-            # y_test[correct_labels] = 1
-            # y_test[wrong_labels] = 0
+
+            # get labels of correct split that are not label
+            split_i = np.where(np.isin(y, train_labels, invert=(split=='val')))[0]
+            wrong_labels = np.intersect1d(np.where(y!=label)[0], split_i)
 
             counter = 0
             for n in range(1,21):
@@ -129,8 +130,6 @@ if __name__ == '__main__':
                             w, correct_i, wrong_i = train(x, 
                                     correct_labels, wrong_labels, n, c,
                                     loss=args.loss)
-                            # sample = np.random.choice(len(y), size=1000)
-                            # print(w.score(x[sample], y_test[sample]))
 
                             sample = {'w0':w,
                                     'wrong_i':wrong_i,
@@ -149,8 +148,14 @@ if __name__ == '__main__':
 
         for label in progress(labels):
 
+            split = 'train' if label in train_labels else 'val'
+
             correct_labels = np.where(y==label)[0]
-            wrong_labels = np.where(y!=label)[0]
+
+            # get labels of correct split that are not label
+            split_i = np.where(np.isin(y, train_labels, invert=(split=='val')))[0]
+            wrong_labels = np.intersect1d(np.where(y!=label)[0], split_i)
+
             w, _ , _ = train(x,
                     correct_labels, wrong_labels, 
                     loss=args.loss, w0=False)
