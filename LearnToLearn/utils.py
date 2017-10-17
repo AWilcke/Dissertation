@@ -142,9 +142,8 @@ if __name__ == "__main__":
         params['C'] = args.C
 
     scores = defaultdict(list)
-
-    for sample in (os.path.join(args.val_path, x) for x in os.listdir(args.val_path)):
-        print(sample)
+    p = progressbar.ProgressBar(widgets=[progressbar.ETA(), ' ', progressbar.Percentage(), ' ', progressbar.Bar()])
+    for sample in p([os.path.join(args.val_path, w) for w in os.listdir(args.val_path)]):
         with open(sample, 'rb') as f:
             s = pickle.load(f)
 

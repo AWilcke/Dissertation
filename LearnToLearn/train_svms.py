@@ -45,12 +45,17 @@ def train(x, correct_i, wrong_i, n_images=None, c=None, loss="squared_hinge", w0
     
     # shuffle them
     shuffle = np.random.permutation(2*n_images)
+
+    if loss=="squared_hinge":
+        dual=False
+    else:
+        dual=True
     
     if w0:
-        model = LinearSVC(dual=False, C=c, loss=loss)
+        model = LinearSVC(dual=dual, C=c, loss=loss)
         model.fit(x[shuffle], y[shuffle])
     else:
-        svm = LinearSVC(dual=False, loss=loss)
+        svm = LinearSVC(dual=dual, loss=loss)
 
         # find best value of C by 10 x-validation
         gridsearch = GridSearchCV(svm, 
