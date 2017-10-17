@@ -11,12 +11,13 @@ from tensorboardX import SummaryWriter
 import os
 
 BATCH_SIZE = 64 # do not set to 1, as BatchNorm won't work
-NUM_EPOCHS = 10
+NUM_EPOCHS = 100
 
 class SVMRegressor(nn.Module):
 
-    def __init__(self):
+    def __init__(self, square_hinge=False):
         super(SVMRegressor, self).__init__()
+        self.square_hinge = square_hinge
         self.regression = nn.Sequential(
             nn.Linear(4097, 6144),
             nn.BatchNorm1d(6144),
@@ -42,10 +43,16 @@ class SVMRegressor(nn.Module):
 
         # calculate summed hinge loss of each regressed svm
         for i in range(regressed_w.data.shape[0]):
-            hinge_loss += torch.mean(torch.clamp(
-                1 - torch.matmul(
-                    regressed_w[i][:-1], train[i].transpose(0,1)).add(regressed_w[i][-1]),
-                min=0))
+            hinge_vector = torch.clamp(
+                    1 - torch.matmul(
+                        regressed_w[i][:-1], train[i].transpose(0,1))
+                    .add(regressed_w[i][-1]),
+                    min=0,
+                    max=100) # max needed for first few steps when loss is squared
+
+            # square the hinge loss if requested
+            hinge_vector = hinge_vector.pow(2) if self.square_hinge else hinge_vector
+            hinge_loss += torch.mean(hinge_vector)
         
         # average
         hinge_loss.div_(regressed_w.data.shape[0])
@@ -74,7 +81,7 @@ def train(args):
 
     writer = SummaryWriter(args.r)
     
-    net = SVMRegressor()
+    net = SVMRegressor(square_hinge=args.square_hinge)
 
     
     start_epoch = 0
@@ -232,6 +239,7 @@ if __name__ == "__main__":
     parser.add_argument('--lr_weight', type=float, default=1)
     parser.add_argument('--steps', nargs='+', type=int, default=[3,6])
     parser.add_argument('--step_gamma', type=float, default=0.1)
+    parser.add_argument('--square_hinge', action='store_true')
 
     # logging args
     parser.add_argument('--write_every_n', type=int, default=500)
