@@ -6,7 +6,7 @@ import argparse
 from collections import defaultdict
 import pickle
 from scipy.io import loadmat
-from model_regressor import SVMRegressor
+from models import SVMRegressor
 import os
 import progressbar
 
