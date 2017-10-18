@@ -36,11 +36,11 @@ class SVMRegressor(nn.Module):
                     1 - torch.matmul(
                         regressed_w[i][:-1], train[i].transpose(0,1))
                     .add(regressed_w[i][-1]),
-                    min=0,
-                    max=100) # max needed for first few steps when loss is squared
+                    min=0)
 
             # square the hinge loss if requested
-            hinge_vector = hinge_vector.pow(2) if self.square_hinge else hinge_vector
+            hinge_vector = torch.clamp(hinge_vector, max=100).pow(2) if self.square_hinge else hinge_vector
+
             hinge_loss += torch.mean(hinge_vector)
         
         # average
