@@ -58,9 +58,10 @@ def train(args):
     if torch.cuda.is_available():
         net = net.cuda()
 
-    if args.adam:
-        print("Using ADAM")
+    if args.optimizer == 'adam':
         optimizer = optim.Adam(net.parameters(), lr=args.lr)
+    elif args.optimizer == 'rmsprop':
+        optimizer = optim.RMSprop(net.parameters(), lr=args.lr)
     else:
         optimizer = optim.SGD(net.parameters(), lr=args.lr, momentum=args.momentum)
 
@@ -193,7 +194,7 @@ if __name__ == "__main__":
     parser.add_argument('--ckpt')
 
     # training args
-    parser.add_argument('--adam', action='store_true')
+    parser.add_argument('--optimiser', type=str, default='sgd')
     parser.add_argument('--lr', type=float, default=1e-3)
     parser.add_argument('--momentum', type=float, default=0.9)
     parser.add_argument('--lr_weight', type=float, default=1)
