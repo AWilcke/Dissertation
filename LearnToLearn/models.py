@@ -47,3 +47,17 @@ class SVMRegressor(nn.Module):
         hinge_loss.div_(regressed_w.data.shape[0])
 
         return l2_loss, hinge_loss
+
+class Critic(nn.Module):
+
+    def __init__(self):
+        self.net = nn.Sequential(
+                nn.Linear(4097, 4097),
+                nn.LeakyReLU(negative_slope=0.01, inplace=True),
+                nn.Linear(4097, 4097),
+                nn.LeakyReLU(negative_slope=0.01, inplace=True),
+                nn.Linear(4097,1)
+                )
+
+    def forward(self, x):
+        return self.net(x)
