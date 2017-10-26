@@ -11,7 +11,7 @@ import os
 from models import SVMRegressor, Critic
 
 BATCH_SIZE = 64 # do not set to 1, as BatchNorm won't work
-NUM_EPOCHS = 100
+NUM_EPOCHS = 1000
 
 def collate_fn(batch):
     # default collate w0, w1
@@ -129,7 +129,7 @@ def train(args):
                 err_C.backward()
                 optimizer_c.step()
 
-                running_err_c += err_c.data[0]
+                running_err_c += err_C.data[0]
                 critic_counter += 1
 
             ########################
@@ -214,12 +214,12 @@ def train(args):
                 val_hinge += val_hinge_loss.data[0]
 
             writer.add_scalar('critic_loss/val', val_critic/len(val_dataloader),
-                    global_step)
+                    epoch)
             writer.add_scalar('hinge_loss/val', val_hinge/len(val_dataloader),
-                    global_step)
+                    epoch)
             writer.add_scalar('total_loss/val', 
                     (val_critic + val_hinge)/len(val_dataloader),
-                    global_step)
+                    epoch)
 
             net.train()
             
@@ -261,14 +261,14 @@ if __name__ == "__main__":
     parser.add_argument('--lr', type=float, default=1e-3)
     parser.add_argument('--momentum', type=float, default=0.9)
     parser.add_argument('--lr_weight', type=float, default=1)
-    parser.add_argphument('--alpha', type=float, default=5e-3)
+    parser.add_argument('--alpha', type=float, default=5e-2)
     parser.add_argument('--steps', nargs='+', type=int, default=[3,6])
     parser.add_argument('--step_gamma', type=float, default=0.1)
     parser.add_argument('--square_hinge', action='store_true')
 
     # logging args
-    parser.add_argument('--write_every_n', type=int, default=50)
-    parser.add_argument('--validate_every_n', type=int, default=100)
+    parser.add_argument('--write_every_n', type=int, default=1)
+    parser.add_argument('--validate_every_n', type=int, default=5)
     parser.add_argument('--save_every_n', type=int, default=1)
     parser.add_argument('--n_models_to_keep', type=int, default=1)
     args = parser.parse_args()

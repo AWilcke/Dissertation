@@ -11,5 +11,4 @@ nice python adv.py \
     -f ../data/features.pickle \
     -r ../data/runs/adv1 \
     --ckpt ../data/ckpts/adv1 \
-    --optimiser rmsprop \
-    --lr 0.0005 \
+    --optimiser rmsprop
