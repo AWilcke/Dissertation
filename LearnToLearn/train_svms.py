@@ -85,7 +85,7 @@ if __name__ == '__main__':
 
     # y = sio.loadmat(args.y)['labels'][0]
     with open(args.y, 'rb') as f:
-        y = pickle.load(f) 
+        y = pickle.load(f)
 
     labels = np.unique(y)
     

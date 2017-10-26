@@ -5,6 +5,6 @@ source activate hons
 
 nice python train_svms.py \
 	-x ../data/features.pickle \
-	-y ../data/imagelabels.mat \
-	-o ../data/l2 \
-	-s w1
+	-y ../data/labels.pickle \
+	-o ../data/l2/w0 \
+	-s w0

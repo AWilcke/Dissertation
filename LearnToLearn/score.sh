@@ -4,11 +4,11 @@ export PATH=/home/s1452854/miniconda3/bin:$PATH
 source activate hons
 export CUDA_VISIBLE_DEVICES=0
 
-name='l2_squared'
+name='rmsprop'
 x='../data/features.pickle'
-y='../data/imagelabels.mat'
+y='../data/labels.pickle'
 o='../results'
-ckpt='../data/ckpts/l2_squared/100.ckpt'
+ckpt='../data/ckpts/rmsprop/100.ckpt'
 val_path='../data/l2/w0/val'
 c=1
 loss='squared_hinge'

@@ -126,7 +126,10 @@ if __name__ == "__main__":
     with open(args.x, 'rb') as f:
         x = pickle.load(f)
 
-    y = loadmat(args.y)['labels'][0]
+    # y = loadmat(args.y)['labels'][0]
+    with open(args.y,'rb') as f:
+        y = pickle.load(f)
+
     if args.usew0:
         net = None
     else:

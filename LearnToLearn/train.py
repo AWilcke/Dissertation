@@ -58,12 +58,14 @@ def train(args):
     if torch.cuda.is_available():
         net = net.cuda()
 
-    if args.optimizer == 'adam':
+    if args.optimiser == 'adam':
         optimizer = optim.Adam(net.parameters(), lr=args.lr)
-    elif args.optimizer == 'rmsprop':
+    elif args.optimiser == 'rmsprop':
         optimizer = optim.RMSprop(net.parameters(), lr=args.lr)
-    else:
+    elif args.optimiser == 'sgd':
         optimizer = optim.SGD(net.parameters(), lr=args.lr, momentum=args.momentum)
+    else:
+        raise Exception("Optimiser type not supported : {}".format(args.optimiser))
 
     # lr step
     lr_schedule = lr_scheduler.MultiStepLR(optimizer, args.steps, gamma=args.step_gamma)

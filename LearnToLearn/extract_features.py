@@ -63,7 +63,7 @@ def main(args):
         images = Variable(images)
         features = net(images).cpu().data.numpy()
         features_out[i*BATCH_SIZE:i*BATCH_SIZE+BATCH_SIZE] = features
-        labels_out[i*BATCH_SIZE:i*BATCH_SIZE+BATCH_SIZE] = labels.numpy()
+        labels_out[i*BATCH_SIZE:i*BATCH_SIZE+BATCH_SIZE] = labels.int().numpy()
         print(i)
 
     with open(os.path.join(args.out, 'features.pickle'),'wb') as f:

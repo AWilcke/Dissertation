@@ -10,7 +10,7 @@ from tensorboardX import SummaryWriter
 import os
 from models import SVMRegressor, Critic
 
-BATCH_SIZE = 16 # do not set to 1, as BatchNorm won't work
+BATCH_SIZE = 64 # do not set to 1, as BatchNorm won't work
 NUM_EPOCHS = 100
 
 def collate_fn(batch):
@@ -209,7 +209,7 @@ def train(args):
                     regressed_val = net(w0_val)
 
                     _, val_hinge_loss = net.loss(regressed_val, w1_val, train_val)
-                    val_critic_loss = critic(regressed_val)
+                    val_critic_loss = torch.mean(critic(regressed_val))
 
                     val_critic += val_critic_loss.data[0]
                     val_hinge += val_hinge_loss.data[0]
@@ -265,10 +265,10 @@ if __name__ == "__main__":
     parser.add_argument('--square_hinge', action='store_true')
 
     # logging args
-    parser.add_argument('--write_every_n', type=int, default=10)
-    parser.add_argument('--validate_every_n', type=int, default=50)
+    parser.add_argument('--write_every_n', type=int, default=50)
+    parser.add_argument('--validate_every_n', type=int, default=100)
     parser.add_argument('--save_every_n', type=int, default=1)
-    parser.add_argument('--n_models_to_keep', type=int, default=3)
+    parser.add_argument('--n_models_to_keep', type=int, default=1)
     args = parser.parse_args()
 
     train(args)
