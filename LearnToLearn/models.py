@@ -51,6 +51,7 @@ class SVMRegressor(nn.Module):
 class Critic(nn.Module):
 
     def __init__(self):
+        super().__init__()
         self.net = nn.Sequential(
                 nn.Linear(4097, 4097),
                 nn.LeakyReLU(negative_slope=0.01, inplace=True),
