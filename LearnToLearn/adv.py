@@ -80,7 +80,8 @@ def train(args):
 
     for epoch in range(start_epoch, NUM_EPOCHS):
 
-        running_critic, running_hinge = 0, 0
+        running_critic, running_hinge, running_err_c = 0, 0, 0
+        gen_counter, critic_counter = 0, 0
         data_iter = iter(dataloader)
         i = 0
 
@@ -126,8 +127,10 @@ def train(args):
 
                 err_C = errC_real - errC_fake
                 err_C.backward()
-
                 optimizer_c.step()
+
+                running_err_c += err_c.data[0]
+                critic_counter += 1
 
             ########################
             ### Update Regressor ###
@@ -160,69 +163,65 @@ def train(args):
                 running_hinge += hinge_loss.data[0]
 
                 # total_loss  = l2_loss + args.lr_weight * hinge_loss + critic_loss
-                total_loss = args.lr_weight * hinge_loss + critic_loss
+                total_loss = hinge_loss + args.alpha * critic_loss
 
                 total_loss.backward()
                 optimizer.step()
                 gen_iterations += 1
+                gen_counter += 1
 
-            global_step = gen_iterations       
+        # write to tensorboard
+        if epoch % args.write_every_n == 0:
 
-            # write to tensorboard
-            if global_step % args.write_every_n == 0:
+            writer.add_scalar('total_loss/train', 
+                    (running_critic + running_hinge)/gen_counter,
+                    epoch)
+            writer.add_scalar('critic_loss/train',
+                    running_critic/gen_counter, epoch)
+            writer.add_scalar('hinge_loss/train',
+                    running_hinge/gen_counter, epoch)
+            writer.add_scalar('wasserstein',
+                    running_err_c/critic_counter, epoch)
 
-                writer.add_scalar('total_loss/train', 
-                        (running_critic + running_hinge)/args.write_every_n,
-                        global_step)
-                # writer.add_scalar('l2_loss/train',
-                        # running_l2/args.write_every_n, global_step)
-                writer.add_scalar('critic_loss/train',
-                        running_critic/args.write_every_n, global_step)
-                writer.add_scalar('hinge_loss/train',
-                        running_hinge/args.write_every_n, global_step)
-                writer.add_scalar('learning_rate',
-                        optimizer.state_dict()['param_groups'][0]['lr'],
-                        global_step)
+            writer.add_scalar('learning_rate',
+                    optimizer.state_dict()['param_groups'][0]['lr'],
+                    epoch)
 
-                running_critic, running_hinge = 0, 0
 
-            # run validation cycle
-            if global_step % args.validate_every_n == 0:
-                
-                # clear up space on gpu
-                del w0, w1, train
-                
-                net.train(False)
+        # run validation cycle
+        if epoch % args.validate_every_n == 0:
+            
+            net.train(False)
 
-                val_critic, val_hinge = 0, 0
-                for val_sample in val_dataloader:
+            val_critic, val_hinge = 0, 0
+            for val_sample in val_dataloader:
 
-                    w0_val = Variable(val_sample['w0'].float())
-                    w1_val = Variable(val_sample['w1'].float())
-                    train_val = [Variable(t.float()) for t in val_sample['train']]
+                w0_val = Variable(val_sample['w0'].float(), volatile=True)
+                w1_val = Variable(val_sample['w1'].float(), volatile=True)
+                train_val = [Variable(t.float(), volatile=True) for t in val_sample['train']]
 
-                    if torch.cuda.is_available():
-                        w0_val = w0_val.cuda()
-                        w1_val = w1_val.cuda()
-                        train_val = [t.cuda() for t in train_val]
+                if torch.cuda.is_available():
+                    w0_val = w0_val.cuda()
+                    w1_val = w1_val.cuda()
+                    train_val = [t.cuda() for t in train_val]
 
-                    regressed_val = net(w0_val)
+                regressed_val = net(w0_val)
 
-                    _, val_hinge_loss = net.loss(regressed_val, w1_val, train_val)
-                    val_critic_loss = torch.mean(critic(regressed_val))
+                _, val_hinge_loss = net.loss(regressed_val, w1_val, train_val)
+                val_critic_loss = torch.mean(critic(regressed_val))
 
-                    val_critic += val_critic_loss.data[0]
-                    val_hinge += val_hinge_loss.data[0]
+                val_critic += val_critic_loss.data[0]
+                val_hinge += val_hinge_loss.data[0]
 
-                writer.add_scalar('critic_loss/val', val_critic/len(val_dataloader),
-                        global_step)
-                writer.add_scalar('hinge_loss/val', val_hinge/len(val_dataloader),
-                        global_step)
-                writer.add_scalar('total_loss/val', 
-                        (val_critic + val_hinge)/len(val_dataloader),
-                        global_step)
+            writer.add_scalar('critic_loss/val', val_critic/len(val_dataloader),
+                    global_step)
+            writer.add_scalar('hinge_loss/val', val_hinge/len(val_dataloader),
+                    global_step)
+            writer.add_scalar('total_loss/val', 
+                    (val_critic + val_hinge)/len(val_dataloader),
+                    global_step)
 
-                net.train()
+            net.train()
             
         
 
@@ -232,15 +231,17 @@ def train(args):
             torch.save(net.state_dict(),
                     os.path.join(args.ckpt, "{}.ckpt".format(epoch+1))
                     )
+            torch.save(critic.state_dict(),
+                    os.path.join(args.ckpt, "{}_critic.ckpt".format(epoch+1)))
 
             # remove old models
             models = [os.path.join(args.ckpt, f) for 
                     f in os.listdir(args.ckpt) if ".ckpt" in f]
-            models = sorted(models, 
-                    key=lambda x : int(os.path.basename(x).split('.')[0]),
+            models = sorted(models,
+                    key=lambda x : int(os.path.basename(x)[0]),
                     reverse=True)
 
-            while len(models) > args.n_models_to_keep:
+            while len(models) > 2 * args.n_models_to_keep:
                 os.remove(models.pop())
 
 
@@ -260,6 +261,7 @@ if __name__ == "__main__":
     parser.add_argument('--lr', type=float, default=1e-3)
     parser.add_argument('--momentum', type=float, default=0.9)
     parser.add_argument('--lr_weight', type=float, default=1)
+    parser.add_argphument('--alpha', type=float, default=5e-3)
     parser.add_argument('--steps', nargs='+', type=int, default=[3,6])
     parser.add_argument('--step_gamma', type=float, default=0.1)
     parser.add_argument('--square_hinge', action='store_true')
