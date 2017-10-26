@@ -85,7 +85,6 @@ def train(args):
         i = 0
 
         while i < len(dataloader):
-            
 
             #####################
             ### Update Critic ###
@@ -167,10 +166,10 @@ def train(args):
                 optimizer.step()
                 gen_iterations += 1
 
-            global_step = epoch*len(dataloader) + i
-            
+            global_step = gen_iterations       
+
             # write to tensorboard
-            if global_step % args.write_every_n == 0 and global_step != 0:
+            if global_step % args.write_every_n == 0:
 
                 writer.add_scalar('total_loss/train', 
                         (running_critic + running_hinge)/args.write_every_n,
@@ -187,43 +186,43 @@ def train(args):
 
                 running_critic, running_hinge = 0, 0
 
-        # run validation cycle
-        if epoch % args.validate_every_n == 0:
-            
-            # clear up space on gpu
-            del w0, w1, train
-            
-            net.train(False)
+            # run validation cycle
+            if global_step % args.validate_every_n == 0:
+                
+                # clear up space on gpu
+                del w0, w1, train
+                
+                net.train(False)
 
-            val_critic, val_hinge = 0, 0
-            for val_sample in val_dataloader:
+                val_critic, val_hinge = 0, 0
+                for val_sample in val_dataloader:
 
-                w0_val = Variable(val_sample['w0'].float())
-                w1_val = Variable(val_sample['w1'].float())
-                train_val = [Variable(t.float()) for t in val_sample['train']]
+                    w0_val = Variable(val_sample['w0'].float())
+                    w1_val = Variable(val_sample['w1'].float())
+                    train_val = [Variable(t.float()) for t in val_sample['train']]
 
-                if torch.cuda.is_available():
-                    w0_val = w0_val.cuda()
-                    w1_val = w1_val.cuda()
-                    train_val = [t.cuda() for t in train_val]
+                    if torch.cuda.is_available():
+                        w0_val = w0_val.cuda()
+                        w1_val = w1_val.cuda()
+                        train_val = [t.cuda() for t in train_val]
 
-                regressed_val = net(w0_val)
+                    regressed_val = net(w0_val)
 
-                _, val_hinge_loss = net.loss(regressed_val, w1_val, train_val)
-                val_critic_loss = critic(regressed_val)
+                    _, val_hinge_loss = net.loss(regressed_val, w1_val, train_val)
+                    val_critic_loss = critic(regressed_val)
 
-                val_critic += val_critic_loss.data[0]
-                val_hinge += val_hinge_loss.data[0]
+                    val_critic += val_critic_loss.data[0]
+                    val_hinge += val_hinge_loss.data[0]
 
-            writer.add_scalar('critic_loss/val', val_critic/len(val_dataloader),
-                    global_step)
-            writer.add_scalar('hinge_loss/val', val_hinge/len(val_dataloader),
-                    global_step)
-            writer.add_scalar('total_loss/val', 
-                    (val_critic + val_hinge)/len(val_dataloader),
-                    global_step)
+                writer.add_scalar('critic_loss/val', val_critic/len(val_dataloader),
+                        global_step)
+                writer.add_scalar('hinge_loss/val', val_hinge/len(val_dataloader),
+                        global_step)
+                writer.add_scalar('total_loss/val', 
+                        (val_critic + val_hinge)/len(val_dataloader),
+                        global_step)
 
-            net.train()
+                net.train()
             
         
 
@@ -266,9 +265,8 @@ if __name__ == "__main__":
     parser.add_argument('--square_hinge', action='store_true')
 
     # logging args
-    parser.add_argument('--write_every_n', type=int, default=100)
-    parser.add_argument('--print_every_n', type=int, default=10)
-    parser.add_argument('--validate_every_n', type=int, default=1)
+    parser.add_argument('--write_every_n', type=int, default=10)
+    parser.add_argument('--validate_every_n', type=int, default=50)
     parser.add_argument('--save_every_n', type=int, default=1)
     parser.add_argument('--n_models_to_keep', type=int, default=3)
     args = parser.parse_args()
