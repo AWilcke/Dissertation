@@ -4,24 +4,29 @@ from torch.autograd import Variable
 
 class SVMRegressor(nn.Module):
 
-    def __init__(self, square_hinge=False):
+    def __init__(self, square_hinge=False, n_gpu=1):
         super(SVMRegressor, self).__init__()
         self.square_hinge = square_hinge
-        self.regression = nn.Sequential(
+        self.ngpu = n_gpu
+        self.main = nn.Sequential(
             nn.Linear(4097, 6144),
-            nn.BatchNorm1d(6144),
+            # nn.BatchNorm1d(6144),
             nn.LeakyReLU(negative_slope=0.01, inplace=True),
             nn.Linear(6144, 5120),
-            nn.BatchNorm1d(5120),
+            # nn.BatchNorm1d(5120),
             nn.LeakyReLU(negative_slope=0.01, inplace=True),
             nn.Linear(5120, 4097),
-            nn.BatchNorm1d(4097),
+            # nn.BatchNorm1d(4097),
             nn.LeakyReLU(negative_slope=0.01, inplace=True),
             nn.Linear(4097, 4097)
             )
 
     def forward(self, x):
-        return self.regression(x)
+        if isinstance(x.data, torch.cuda.FloatTensor) and self.ngpu > 1:
+            output = nn.parallel.data_parallel(self.main, x, range(self.ngpu))
+        else:
+            output = self.main(x)
+        return output
     
     def loss(self, regressed_w, w1, train):
         l2_loss = .5 * torch.mean(torch.norm(w1.sub(regressed_w), 2, 1).pow(2))
@@ -50,15 +55,22 @@ class SVMRegressor(nn.Module):
 
 class Critic(nn.Module):
 
-    def __init__(self):
+    def __init__(self, n_gpu=1):
         super().__init__()
-        self.net = nn.Sequential(
+        self.main = nn.Sequential(
                 nn.Linear(4097, 4097),
                 nn.LeakyReLU(negative_slope=0.01, inplace=True),
-                nn.Linear(4097, 4097),
+                nn.Linear(4097, 512),
                 nn.LeakyReLU(negative_slope=0.01, inplace=True),
-                nn.Linear(4097,1)
+                nn.Linear(512, 512),
+                nn.LeakyReLU(negative_slope=0.01, inplace=True),
+                nn.Linear(512,1)
                 )
+        self.ngpu = n_gpu
 
     def forward(self, x):
-        return self.net(x)
+        if isinstance(x.data, torch.cuda.FloatTensor) and self.ngpu > 1:
+            output = nn.parallel.data_parallel(self.main, x, range(self.ngpu))
+        else:
+            output = self.main(x)
+        return output

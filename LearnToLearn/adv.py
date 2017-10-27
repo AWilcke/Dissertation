@@ -21,6 +21,14 @@ def collate_fn(batch):
 
     return out
 
+def weights_init(m):
+    classname = m.__class__.__name__
+    if classname.find('Conv') != -1:
+        m.weight.data.normal_(0.0, 0.02)
+    elif classname.find('BatchNorm') != -1:
+        m.weight.data.normal_(1.0, 0.02)
+        m.bias.data.fill_(0)
+
 def train(args):
     # training datasets
     dataset = SVMDataset(args.w0, args.w1, args.feature, split='train')
@@ -31,9 +39,17 @@ def train(args):
 
     if not os.path.exists(args.ckpt):
         os.mkdir(args.ckpt)
+
+    if torch.cuda.is_available():
+        n_gpu = torch.cuda.device_count()
+        print("Using {} GPUs".format(n_gpu))
+    else:
+        n_gpu = 0
     
-    net = SVMRegressor(square_hinge=args.square_hinge)
-    critic = Critic()
+    net = SVMRegressor(square_hinge=args.square_hinge, n_gpu=n_gpu)
+    net.apply(weights_init)
+    critic = Critic(n_gpu=n_gpu)
+    critic.apply(weights_init)
 
     if torch.cuda.is_available():
         net = net.cuda()
@@ -51,9 +67,17 @@ def train(args):
     else:
         raise Exception("Optimiser type unkown : {}".format(args.optimiser))
 
+    print("Using {} optimiser".format(args.optimiser))
+
     gen_iterations = 0
     running_c, running_g = 0, 0
     gen_counter, critic_counter = 0, 0
+
+    one = torch.FloatTensor([1])
+    mone = -1 * one
+
+    if torch.cuda.is_available():
+        one, mone = one.cuda(), mone.cuda()
 
     while gen_iterations < NUM_EPOCHS:
 
@@ -79,6 +103,9 @@ def train(args):
                 j += 1
                 samples = data_iter.next()
                 i+=1
+
+                for p in critic.parameters():
+                    p.data.clamp_(-0.01, 0.01)
                 
                 w0 = Variable(samples['w0'].float(), volatile=True)
                 w1 = Variable(samples['w1'].float())
@@ -91,17 +118,17 @@ def train(args):
 
                 # train with real (w1)
                 errC_real = torch.mean(critic(w1))
+                errC_real.backward(one)
 
                 # train with fake
                 fake_w1 = Variable(net(w0).data)
                 errC_fake = torch.mean(critic(fake_w1))
+                errC_fake.backward(mone)
 
                 err_C = errC_real - errC_fake
-                err_C.backward()
                 optimizer_c.step()
 
-                for p in critic.parameters():
-                    p.data.clamp_(-0.01, 0.01)
+
 
                 running_c += err_C.data[0]
                 critic_counter += 1
@@ -114,6 +141,7 @@ def train(args):
                 p.requires_grad = False
             
             if i < len(dataloader):
+
                 samples = data_iter.next()
                 i+=1
 
@@ -137,13 +165,19 @@ def train(args):
                 gen_iterations += 1
                 gen_counter += 1
 
+            print('[%d/%d][%d] Loss_C: %f Loss_G: %f Loss_C_real: %f Loss_C_fake %f'
+            % (i, len(dataloader), gen_iterations,
+            err_C.data[0], err_G.data[0], errC_real.data[0], errC_fake.data[0]))
+
             # write to tensorboard
             if gen_iterations % args.write_every_n == 0:
 
-                writer.add_scalar('err_G', 
-                        running_g/gen_counter, gen_iterations)
-                writer.add_scalar('err_D',
-                        running_c/critic_counter, gen_iterations)
+                if gen_counter:
+                    writer.add_scalar('err_G', 
+                            running_g/gen_counter, gen_iterations)
+                if critic_counter:
+                    writer.add_scalar('err_D',
+                            running_c/critic_counter, gen_iterations)
                 writer.add_scalar('learning_rate',
                         optimizer.state_dict()['param_groups'][0]['lr'],
                         gen_iterations)
