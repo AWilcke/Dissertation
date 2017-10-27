@@ -1,6 +1,5 @@
 import torch
 import torch.optim as optim
-from torch.optim import lr_scheduler
 from torch.autograd import Variable
 from dataloader import SVMDataset
 from torch.utils.data import DataLoader
@@ -11,7 +10,7 @@ import os
 from models import SVMRegressor, Critic
 
 BATCH_SIZE = 64 # do not set to 1, as BatchNorm won't work
-NUM_EPOCHS = 1000
+NUM_EPOCHS = 100000
 
 def collate_fn(batch):
     # default collate w0, w1
@@ -28,31 +27,11 @@ def train(args):
     dataloader = DataLoader(dataset, batch_size=BATCH_SIZE,
             shuffle=True, num_workers=8, collate_fn=collate_fn)
 
-    # validation datasets
-    val_dataset = SVMDataset(args.w0, args.w1, args.feature, split='val')
-    val_dataloader = DataLoader(val_dataset, batch_size=BATCH_SIZE,
-            shuffle=False, num_workers=8, collate_fn=collate_fn)
-
     writer = SummaryWriter(args.r)
     
     net = SVMRegressor(square_hinge=args.square_hinge)
     critic = Critic()
-    start_epoch = 0
 
-    # load model if exists
-    if not os.path.exists(args.ckpt):
-        os.mkdir(args.ckpt)
-    if os.listdir(args.ckpt):
-
-        latest_model = sorted(os.listdir(args.ckpt),
-                key=lambda x : int(x.split('.')[0]))[-1]
-        print("Restoring from model {}".format(latest_model))
-        net.load_state_dict(torch.load(
-            os.path.join(args.ckpt, latest_model)))
-        
-        #update start epoch
-        start_epoch = int(latest_model.split('.')[0])
-    
     if torch.cuda.is_available():
         net = net.cuda()
         critic = critic.cuda()
@@ -69,18 +48,11 @@ def train(args):
     else:
         raise Exception("Optimiser type unkown : {}".format(args.optimiser))
 
-    # # lr step
-    # lr_schedule = lr_scheduler.MultiStepLR(optimizer, args.steps, gamma=args.step_gamma)
-
-    # #update optimiser, in case loading model
-    # for i in range(start_epoch):
-        # lr_schedule.step()
-
     gen_iterations = 0
 
-    for epoch in range(start_epoch, NUM_EPOCHS):
+    while gen_iterations < NUM_EPOCHS:
 
-        running_critic, running_hinge, running_err_c = 0, 0, 0
+        running_c, running_g = 0, 0
         gen_counter, critic_counter = 0, 0
         data_iter = iter(dataloader)
         i = 0
@@ -129,7 +101,7 @@ def train(args):
                 err_C.backward()
                 optimizer_c.step()
 
-                running_err_c += err_C.data[0]
+                running_c += err_C.data[0]
                 critic_counter += 1
 
             ########################
@@ -145,104 +117,53 @@ def train(args):
 
                 w0 = Variable(samples['w0'].float())
                 w1 = Variable(samples['w1'].float())
-                train = [Variable(t.float()) for t in samples['train']]
 
                 if torch.cuda.is_available():
                     w0 = w0.cuda()
                     w1 = w1.cuda()
-                    train = [t.cuda() for t in train]
 
                 optimizer.zero_grad()
                 
                 regressed_w = net(w0) # regressed_w[-1] is the intercept
-                
-                _ , hinge_loss = net.loss(regressed_w, w1, train)
+
                 critic_out = critic(regressed_w)
-                critic_loss = torch.mean(critic_out)
-                running_critic += critic_loss.data[0]
-                running_hinge += hinge_loss.data[0]
-
-                # total_loss  = l2_loss + args.lr_weight * hinge_loss + critic_loss
-                total_loss = hinge_loss + args.alpha * critic_loss
-
-                total_loss.backward()
+                err_G = torch.mean(critic_out)
+                err_G.backward()
                 optimizer.step()
+
+                running_g += err_G.data[0]
                 gen_iterations += 1
                 gen_counter += 1
 
-        # write to tensorboard
-        if epoch % args.write_every_n == 0:
+            # write to tensorboard
+            if gen_iterations % args.write_every_n == 0:
 
-            writer.add_scalar('total_loss/train', 
-                    (running_critic + running_hinge)/gen_counter,
-                    epoch)
-            writer.add_scalar('critic_loss/train',
-                    running_critic/gen_counter, epoch)
-            writer.add_scalar('hinge_loss/train',
-                    running_hinge/gen_counter, epoch)
-            writer.add_scalar('wasserstein',
-                    running_err_c/critic_counter, epoch)
+                writer.add_scalar('err_G', 
+                        running_g/gen_counter, gen_iterations)
+                writer.add_scalar('err_D',
+                        running_c/critic_counter, gen_iterations)
+                writer.add_scalar('learning_rate',
+                        optimizer.state_dict()['param_groups'][0]['lr'],
+                        gen_iterations)
 
-            writer.add_scalar('learning_rate',
-                    optimizer.state_dict()['param_groups'][0]['lr'],
-                    epoch)
+            # save model
+            if gen_iterations % args.save_every_n == 0:
 
+                torch.save(net.state_dict(),
+                        os.path.join(args.ckpt, "{}.ckpt".format(gen_iterations))
+                        )
+                torch.save(critic.state_dict(),
+                        os.path.join(args.ckpt, "{}_critic.ckpt".format(gen_iterations)))
 
-        # run validation cycle
-        if epoch % args.validate_every_n == 0:
-            
-            net.train(False)
+                # remove old models
+                models = [os.path.join(args.ckpt, f) for 
+                        f in os.listdir(args.ckpt) if ".ckpt" in f]
+                models = sorted(models,
+                        key=lambda x : int(os.path.basename(x)[0]),
+                        reverse=True)
 
-            val_critic, val_hinge = 0, 0
-            for val_sample in val_dataloader:
-
-                w0_val = Variable(val_sample['w0'].float(), volatile=True)
-                w1_val = Variable(val_sample['w1'].float(), volatile=True)
-                train_val = [Variable(t.float(), volatile=True) for t in val_sample['train']]
-
-                if torch.cuda.is_available():
-                    w0_val = w0_val.cuda()
-                    w1_val = w1_val.cuda()
-                    train_val = [t.cuda() for t in train_val]
-
-                regressed_val = net(w0_val)
-
-                _, val_hinge_loss = net.loss(regressed_val, w1_val, train_val)
-                val_critic_loss = torch.mean(critic(regressed_val))
-
-                val_critic += val_critic_loss.data[0]
-                val_hinge += val_hinge_loss.data[0]
-
-            writer.add_scalar('critic_loss/val', val_critic/len(val_dataloader),
-                    epoch)
-            writer.add_scalar('hinge_loss/val', val_hinge/len(val_dataloader),
-                    epoch)
-            writer.add_scalar('total_loss/val', 
-                    (val_critic + val_hinge)/len(val_dataloader),
-                    epoch)
-
-            net.train()
-            
-        
-
-        # save model
-        if (epoch + 1) % args.save_every_n == 0:
-
-            torch.save(net.state_dict(),
-                    os.path.join(args.ckpt, "{}.ckpt".format(epoch+1))
-                    )
-            torch.save(critic.state_dict(),
-                    os.path.join(args.ckpt, "{}_critic.ckpt".format(epoch+1)))
-
-            # remove old models
-            models = [os.path.join(args.ckpt, f) for 
-                    f in os.listdir(args.ckpt) if ".ckpt" in f]
-            models = sorted(models,
-                    key=lambda x : int(os.path.basename(x)[0]),
-                    reverse=True)
-
-            while len(models) > 2 * args.n_models_to_keep:
-                os.remove(models.pop())
+                while len(models) > 2 * args.n_models_to_keep:
+                    os.remove(models.pop())
 
 
 
@@ -258,7 +179,7 @@ if __name__ == "__main__":
 
     # training args
     parser.add_argument('--optimiser', type=str, default='sgd')
-    parser.add_argument('--lr', type=float, default=1e-3)
+    parser.add_argument('--lr', type=float, default=5e-5)
     parser.add_argument('--momentum', type=float, default=0.9)
     parser.add_argument('--lr_weight', type=float, default=1)
     parser.add_argument('--alpha', type=float, default=5e-2)
@@ -267,9 +188,9 @@ if __name__ == "__main__":
     parser.add_argument('--square_hinge', action='store_true')
 
     # logging args
-    parser.add_argument('--write_every_n', type=int, default=1)
+    parser.add_argument('--write_every_n', type=int, default=100)
     parser.add_argument('--validate_every_n', type=int, default=5)
-    parser.add_argument('--save_every_n', type=int, default=1)
+    parser.add_argument('--save_every_n', type=int, default=1000)
     parser.add_argument('--n_models_to_keep', type=int, default=1)
     args = parser.parse_args()
 
