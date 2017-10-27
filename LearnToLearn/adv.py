@@ -28,6 +28,9 @@ def train(args):
             shuffle=True, num_workers=8, collate_fn=collate_fn)
 
     writer = SummaryWriter(args.r)
+
+    if not os.path.exists(args.ckpt):
+        os.mkdir(args.ckpt)
     
     net = SVMRegressor(square_hinge=args.square_hinge)
     critic = Critic()
@@ -49,11 +52,11 @@ def train(args):
         raise Exception("Optimiser type unkown : {}".format(args.optimiser))
 
     gen_iterations = 0
+    running_c, running_g = 0, 0
+    gen_counter, critic_counter = 0, 0
 
     while gen_iterations < NUM_EPOCHS:
 
-        running_c, running_g = 0, 0
-        gen_counter, critic_counter = 0, 0
         data_iter = iter(dataloader)
         i = 0
 
@@ -145,6 +148,11 @@ def train(args):
                 writer.add_scalar('learning_rate',
                         optimizer.state_dict()['param_groups'][0]['lr'],
                         gen_iterations)
+
+                running_g = 0
+                running_c = 0
+                gen_counter = 0
+                critic_counter = 0
 
             # save model
             if gen_iterations % args.save_every_n == 0:
