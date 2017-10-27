@@ -77,10 +77,6 @@ def train(args):
             j = 0
             while j < critic_iterations and i < len(dataloader):
                 j += 1
-
-                for p in critic.parameters():
-                    p.data.clamp(-0.01, 0.01)
-
                 samples = data_iter.next()
                 i+=1
                 
@@ -103,6 +99,9 @@ def train(args):
                 err_C = errC_real - errC_fake
                 err_C.backward()
                 optimizer_c.step()
+
+                for p in critic.parameters():
+                    p.data.clamp_(-0.01, 0.01)
 
                 running_c += err_C.data[0]
                 critic_counter += 1
