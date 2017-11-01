@@ -8,6 +8,7 @@ import argparse
 from tensorboardX import SummaryWriter
 import os
 from models import SVMRegressor, Critic
+import re
 
 BATCH_SIZE = 64 # do not set to 1, as BatchNorm won't work
 NUM_EPOCHS = 100000
@@ -36,10 +37,8 @@ def train(args):
             shuffle=True, num_workers=8, collate_fn=collate_fn)
 
     writer = SummaryWriter(args.r)
-
-    if not os.path.exists(args.ckpt):
-        os.mkdir(args.ckpt)
-
+    
+    # create models
     if torch.cuda.is_available():
         n_gpu = torch.cuda.device_count()
         print("Using {} GPUs".format(n_gpu))
@@ -50,6 +49,31 @@ def train(args):
     net.apply(weights_init)
     critic = Critic(n_gpu=n_gpu)
     critic.apply(weights_init)
+
+    gen_iterations = 0
+    
+    # restore from ckpt
+    if not os.path.exists(args.ckpt):
+        os.mkdir(args.ckpt)
+    if os.listdir(args.ckpt):
+        # get all models
+        models = [f  for f in os.listdir(args.ckpt) if ".ckpt" in f]
+        # sort by gen_iter
+        latest_models = sorted(models,
+                key=lambda x : int(re.findall(r'\d+', x)[0]),
+                reverse=True)[:2]
+        # get critic and gen
+        latest_gen, latest_critic = sorted(latest_models)
+
+        print("Restoring from model {}".format(latest_gen))
+        net.load_state_dict(torch.load(
+            os.path.join(args.ckpt, latest_gen)))
+        critic.load_state_dict(torch.load(
+            os.path.join(args.ckpt, latest_critic)))
+        
+        #update start iter
+        gen_iterations = int(latest_gen.split('.')[0])
+
 
     if torch.cuda.is_available():
         net = net.cuda()
@@ -69,8 +93,7 @@ def train(args):
 
     print("Using {} optimiser".format(args.optimiser))
 
-    gen_iterations = 0
-    running_c, running_g = 0, 0
+    running_c, running_g, running_hinge = 0, 0, 0
     gen_counter, critic_counter = 0, 0
 
     one = torch.FloatTensor([1])
@@ -96,7 +119,7 @@ def train(args):
             if gen_iterations < 25 or gen_iterations % 500 == 0:
                 critic_iterations = 100
             else:
-                critic_iterations = 5
+                critic_iterations = args.critic_iters
 
             j = 0
             while j < critic_iterations and i < len(dataloader):
@@ -147,43 +170,58 @@ def train(args):
 
                 w0 = Variable(samples['w0'].float())
                 w1 = Variable(samples['w1'].float())
+                train = [Variable(t.float()) for t in samples['train']]
 
                 if torch.cuda.is_available():
                     w0 = w0.cuda()
                     w1 = w1.cuda()
+                    train = [t.cuda() for t in train]
 
                 optimizer.zero_grad()
                 
                 regressed_w = net(w0) # regressed_w[-1] is the intercept
 
+                # train with critic loss
                 critic_out = critic(regressed_w)
                 err_G = torch.mean(critic_out)
-                err_G.backward()
+
+
+                # train with hinge loss
+                _, hinge_loss = net.loss(regressed_w, w1, train)
+                total_loss = args.alpha * err_G + hinge_loss
+                total_loss.backward()
+
                 optimizer.step()
 
                 running_g += err_G.data[0]
+                running_hinge += hinge_loss.data[0]
+
                 gen_iterations += 1
                 gen_counter += 1
 
-            print('[%d/%d][%d] Loss_C: %f Loss_G: %f Loss_C_real: %f Loss_C_fake %f'
+            print('[%d/%d][%d] Loss_C: %.3f Loss_G: %.3f Loss_C_real: %.3f Loss_C_fake: %.3f Loss_Hinge: %.3f'
             % (i, len(dataloader), gen_iterations,
-            err_C.data[0], err_G.data[0], errC_real.data[0], errC_fake.data[0]))
+            err_C.data[0], err_G.data[0], errC_real.data[0], errC_fake.data[0], hinge_loss.data[0]))
 
             # write to tensorboard
             if gen_iterations % args.write_every_n == 0:
-
-                if gen_counter:
+                # make sure we're not writing the tail end of a batch
+                if gen_counter > 5:
                     writer.add_scalar('err_G', 
                             running_g/gen_counter, gen_iterations)
-                if critic_counter:
+                    writer.add_scalar('hinge_loss', 
+                            running_hinge/gen_counter, gen_iterations)
+                if critic_counter > 5:
                     writer.add_scalar('err_D',
                             running_c/critic_counter, gen_iterations)
                 writer.add_scalar('learning_rate',
                         optimizer.state_dict()['param_groups'][0]['lr'],
                         gen_iterations)
 
+                # reset all counters
                 running_g = 0
                 running_c = 0
+                running_hinge = 0
                 gen_counter = 0
                 critic_counter = 0
 
@@ -200,7 +238,7 @@ def train(args):
                 models = [os.path.join(args.ckpt, f) for 
                         f in os.listdir(args.ckpt) if ".ckpt" in f]
                 models = sorted(models,
-                        key=lambda x : int(os.path.basename(x)[0]),
+                        key=lambda x : int(re.findall(r'\d+', x)[0]),
                         reverse=True)
 
                 while len(models) > 2 * args.n_models_to_keep:
@@ -219,11 +257,11 @@ if __name__ == "__main__":
     parser.add_argument('--ckpt')
 
     # training args
+    parser.add_argument('--critic_iters', type=int, default=5)
     parser.add_argument('--optimiser', type=str, default='sgd')
     parser.add_argument('--lr', type=float, default=5e-5)
     parser.add_argument('--momentum', type=float, default=0.9)
-    parser.add_argument('--lr_weight', type=float, default=1)
-    parser.add_argument('--alpha', type=float, default=5e-2)
+    parser.add_argument('--alpha', type=float, default=1)
     parser.add_argument('--steps', nargs='+', type=int, default=[3,6])
     parser.add_argument('--step_gamma', type=float, default=0.1)
     parser.add_argument('--square_hinge', action='store_true')

@@ -10,13 +10,13 @@ class SVMRegressor(nn.Module):
         self.ngpu = n_gpu
         self.main = nn.Sequential(
             nn.Linear(4097, 6144),
-            # nn.BatchNorm1d(6144),
+            nn.BatchNorm1d(6144),
             nn.LeakyReLU(negative_slope=0.01, inplace=True),
             nn.Linear(6144, 5120),
-            # nn.BatchNorm1d(5120),
+            nn.BatchNorm1d(5120),
             nn.LeakyReLU(negative_slope=0.01, inplace=True),
             nn.Linear(5120, 4097),
-            # nn.BatchNorm1d(4097),
+            nn.BatchNorm1d(4097),
             nn.LeakyReLU(negative_slope=0.01, inplace=True),
             nn.Linear(4097, 4097)
             )
@@ -59,10 +59,13 @@ class Critic(nn.Module):
         super().__init__()
         self.main = nn.Sequential(
                 nn.Linear(4097, 4097),
+                nn.BatchNorm1d(4097),
                 nn.LeakyReLU(negative_slope=0.01, inplace=True),
                 nn.Linear(4097, 512),
+                nn.BatchNorm1d(512),
                 nn.LeakyReLU(negative_slope=0.01, inplace=True),
                 nn.Linear(512, 512),
+                nn.BatchNorm1d(512),
                 nn.LeakyReLU(negative_slope=0.01, inplace=True),
                 nn.Linear(512,1)
                 )
