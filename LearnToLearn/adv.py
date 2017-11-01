@@ -11,7 +11,7 @@ from models import SVMRegressor, Critic
 import re
 
 BATCH_SIZE = 64 # do not set to 1, as BatchNorm won't work
-NUM_EPOCHS = 100000
+NUM_EPOCHS = 150000
 
 def collate_fn(batch):
     # default collate w0, w1
@@ -235,14 +235,13 @@ def train(args):
                         os.path.join(args.ckpt, "{}_critic.ckpt".format(gen_iterations)))
 
                 # remove old models
-                models = [os.path.join(args.ckpt, f) for 
-                        f in os.listdir(args.ckpt) if ".ckpt" in f]
+                models = [f for f in os.listdir(args.ckpt) if ".ckpt" in f]
                 models = sorted(models,
                         key=lambda x : int(re.findall(r'\d+', x)[0]),
                         reverse=True)
 
                 while len(models) > 2 * args.n_models_to_keep:
-                    os.remove(models.pop())
+                    os.remove(os.path.join(args.ckpt, models.pop()))
 
 
 
