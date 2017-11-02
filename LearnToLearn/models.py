@@ -2,6 +2,19 @@ import torch
 import torch.nn as nn
 from torch.autograd import Variable
 
+class LayerNorm(nn.Module):
+
+    def __init__(self, weights, eps=1e-5):
+        super().__init__()
+        self.gamma = nn.Parameter(torch.ones(weights))
+        self.beta = nn.Parameter(torch.zeros(weights))
+        self.eps = eps
+
+    def forward(self, x):
+        mean = x.mean(-1, keepdim=True)
+        std = x.std(-1, keepdim=True)
+        return self.gamma * (x - mean) / (std + self.eps) + self.beta
+
 class SVMRegressor(nn.Module):
 
     def __init__(self, square_hinge=False, n_gpu=1):
@@ -55,17 +68,20 @@ class SVMRegressor(nn.Module):
 
 class Critic(nn.Module):
 
-    def __init__(self, n_gpu=1):
+    def __init__(self, n_gpu=1, gp=True):
         super().__init__()
+        
+        norm_layer = LayerNorm if gp else nn.BatchNorm1d
+
         self.main = nn.Sequential(
                 nn.Linear(4097, 4097),
-                nn.BatchNorm1d(4097),
+                norm_layer(4097),
                 nn.LeakyReLU(negative_slope=0.01, inplace=True),
                 nn.Linear(4097, 512),
-                nn.BatchNorm1d(512),
+                norm_layer(512),
                 nn.LeakyReLU(negative_slope=0.01, inplace=True),
                 nn.Linear(512, 512),
-                nn.BatchNorm1d(512),
+                norm_layer(512),
                 nn.LeakyReLU(negative_slope=0.01, inplace=True),
                 nn.Linear(512,1)
                 )

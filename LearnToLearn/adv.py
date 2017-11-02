@@ -1,5 +1,6 @@
 import torch
 import torch.optim as optim
+import torch.autograd as autograd
 from torch.autograd import Variable
 from dataloader import SVMDataset
 from torch.utils.data import DataLoader
@@ -30,6 +31,23 @@ def weights_init(m):
         m.weight.data.normal_(1.0, 0.02)
         m.bias.data.fill_(0)
 
+def gradient_penalty(critic, real, fake):
+
+    alpha = torch.rand(real.shape[0], 1)
+    ones = torch.ones(real.shape[0])
+    if isinstance(real.data, torch.cuda.FloatTensor):
+        alpha, ones = alpha.cuda(), ones.cuda()
+
+    xhat = Variable(alpha * real + (1-alpha) * fake)
+
+    critic_out = critic(xhat)
+
+    grads = autograd.grad(outputs=critic_out, inputs=xhat, grad_outputs=ones,
+            create_graph=True, only_inputs=True)
+
+    return (torch.norm(grads) - 1).pow(2)
+
+
 def train(args):
     # training datasets
     dataset = SVMDataset(args.w0, args.w1, args.feature, split='train')
@@ -47,7 +65,7 @@ def train(args):
     
     net = SVMRegressor(square_hinge=args.square_hinge, n_gpu=n_gpu)
     net.apply(weights_init)
-    critic = Critic(n_gpu=n_gpu)
+    critic = Critic(n_gpu=n_gpu, gp=args.gp)
     critic.apply(weights_init)
 
     gen_iterations = 0
@@ -81,7 +99,7 @@ def train(args):
 
     if args.optimiser == 'adam':
         optimizer = optim.Adam(net.parameters(), lr=args.lr)
-        optimizer_c = optim.Adam(critic.parameters(), lr=args.lr)
+        optimizer_c = optim.Adam(critic.parameters(), lr=args.lr, betas=(0, 0.9))
     elif args.optimiser == 'rmsprop':
         optimizer = optim.RMSprop(net.parameters(), lr=args.lr)
         optimizer_c = optim.RMSprop(critic.parameters(), lr=args.lr)
@@ -93,7 +111,7 @@ def train(args):
 
     print("Using {} optimiser".format(args.optimiser))
 
-    running_c, running_g, running_hinge = 0, 0, 0
+    running_c, running_g, running_hinge, running_grad = 0, 0, 0, 0
     gen_counter, critic_counter = 0, 0
 
     one = torch.FloatTensor([1])
@@ -127,8 +145,9 @@ def train(args):
                 samples = data_iter.next()
                 i+=1
 
-                for p in critic.parameters():
-                    p.data.clamp_(-0.01, 0.01)
+                if not args.gp:
+                    for p in critic.parameters():
+                        p.data.clamp_(-0.01, 0.01)
                 
                 w0 = Variable(samples['w0'].float(), volatile=True)
                 w1 = Variable(samples['w1'].float())
@@ -148,11 +167,16 @@ def train(args):
                 errC_fake = torch.mean(critic(fake_w1))
                 errC_fake.backward(mone)
 
-                err_C = errC_real - errC_fake
+                # apply gradient penalty
+                if args.gp:
+                    grad_penalty = args.lambd * gradient_penalty(critic, w1, fake_w1)
+                    grad_penalty.backward(one)
+
+                    running_grad += grad_penalty.data[0]
+
                 optimizer_c.step()
 
-
-
+                err_C = errC_real - errC_fake
                 running_c += err_C.data[0]
                 critic_counter += 1
 
@@ -219,6 +243,9 @@ def train(args):
                 if critic_counter > 5:
                     writer.add_scalar('err_D',
                             running_c/critic_counter, gen_iterations)
+                    if args.gp:
+                        writer.add_scalar('grad',
+                                running_grad/critic_counter, gen_iterations)
                 writer.add_scalar('learning_rate',
                         optimizer.state_dict()['param_groups'][0]['lr'],
                         gen_iterations)
@@ -227,6 +254,7 @@ def train(args):
                 running_g = 0
                 running_c = 0
                 running_hinge = 0
+                running_grad = 0
                 gen_counter = 0
                 critic_counter = 0
 
@@ -270,6 +298,8 @@ if __name__ == "__main__":
     parser.add_argument('--step_gamma', type=float, default=0.1)
     parser.add_argument('--square_hinge', action='store_true')
     parser.add_argument('--pure_gan', action='store_true')
+    parser.add_argument('--gp', action='store_true')
+    parser.add_argument('--lambda', dest='lambd', type=float, default=10)
 
     # logging args
     parser.add_argument('--write_every_n', type=int, default=100)
