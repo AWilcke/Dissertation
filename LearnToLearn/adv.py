@@ -33,20 +33,22 @@ def weights_init(m):
 
 def gradient_penalty(critic, real, fake):
 
-    alpha = torch.rand(real.shape[0], 1)
-    ones = torch.ones(real.shape[0])
-    if isinstance(real.data, torch.cuda.FloatTensor):
-        alpha, ones = alpha.cuda(), ones.cuda()
+    epsilon = torch.rand(real.shape[0], 1)
+    if isinstance(real, torch.cuda.FloatTensor):
+        epsilon = epsilon.cuda()
 
-    xhat = Variable(alpha * real + (1-alpha) * fake)
+    xhat = Variable(epsilon * real + (1-epsilon) * fake, requires_grad=True)
 
     critic_out = critic(xhat)
 
+    ones = torch.ones(critic_out.size())
+    if isinstance(real, torch.cuda.FloatTensor):
+        ones = ones.cuda()
+
     grads = autograd.grad(outputs=critic_out, inputs=xhat, grad_outputs=ones,
-            create_graph=True, only_inputs=True)
+            create_graph=True, only_inputs=True)[0]
 
     return (torch.norm(grads) - 1).pow(2)
-
 
 def train(args):
     # training datasets
@@ -169,7 +171,7 @@ def train(args):
 
                 # apply gradient penalty
                 if args.gp:
-                    grad_penalty = args.lambd * gradient_penalty(critic, w1, fake_w1)
+                    grad_penalty = args.lambd * gradient_penalty(critic, w1.data, fake_w1.data)
                     grad_penalty.backward(one)
 
                     running_grad += grad_penalty.data[0]
