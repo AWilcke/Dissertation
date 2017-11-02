@@ -188,7 +188,12 @@ def train(args):
 
                 # train with hinge loss
                 _, hinge_loss = net.loss(regressed_w, w1, train)
-                total_loss = args.alpha * err_G + hinge_loss
+
+                # training a pure gan
+                if args.pure_gan:
+                    total_loss = err_G
+                else:
+                    total_loss = args.alpha * err_G + hinge_loss
                 total_loss.backward()
 
                 optimizer.step()
@@ -264,6 +269,7 @@ if __name__ == "__main__":
     parser.add_argument('--steps', nargs='+', type=int, default=[3,6])
     parser.add_argument('--step_gamma', type=float, default=0.1)
     parser.add_argument('--square_hinge', action='store_true')
+    parser.add_argument('--pure_gan', action='store_true')
 
     # logging args
     parser.add_argument('--write_every_n', type=int, default=100)
