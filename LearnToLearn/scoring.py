@@ -83,7 +83,6 @@ def score_svm(sample, data, labels, net, use_w0=False, refit=False, num_samples=
         svm = LinearSVC(regressed_w=w0, **svm_params)
         shuffle = np.random.permutation(2*len(correct_i))
         y = np.array([1] * len(correct_i) + [0] * len(wrong_i))
-        print("{}, {}, {}".format(y, len(correct_i), len(wrong_i)))
         index = np.concatenate((correct_i, wrong_i))
         svm.fit(data[index][shuffle], y[shuffle])
     else:

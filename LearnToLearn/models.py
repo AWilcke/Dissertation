@@ -93,3 +93,38 @@ class Critic(nn.Module):
         else:
             output = self.main(x)
         return output
+
+class LargeCritic(nn.Module):
+
+    def __init__(self, n_gpu=1, gp=True):
+        super().__init__()
+        
+        norm_layer = LayerNorm if gp else nn.BatchNorm1d
+
+        self.main = nn.Sequential(
+                nn.Linear(4097, 4097),
+                norm_layer(4097),
+                nn.LeakyReLU(negative_slope=0.01, inplace=True),
+                nn.Dropout(),
+                nn.Linear(4097, 4097),
+                norm_layer(4097),
+                nn.LeakyReLU(negative_slope=0.01, inplace=True),
+                nn.Dropout(),
+                nn.Linear(4097, 512),
+                norm_layer(512),
+                nn.LeakyReLU(negative_slope=0.01, inplace=True),
+                nn.Dropout(),
+                nn.Linear(512, 512),
+                norm_layer(512),
+                nn.LeakyReLU(negative_slope=0.01, inplace=True),
+                nn.Dropout(),
+                nn.Linear(512,1)
+                )
+        self.ngpu = n_gpu
+
+    def forward(self, x):
+        if isinstance(x.data, torch.cuda.FloatTensor) and self.ngpu > 1:
+            output = nn.parallel.data_parallel(self.main, x, range(self.ngpu))
+        else:
+            output = self.main(x)
+        return output

@@ -8,7 +8,7 @@ from torch.utils.data.dataloader import default_collate
 import argparse
 from tensorboardX import SummaryWriter
 import os
-from models import SVMRegressor, Critic
+from models import SVMRegressor, Critic, LargeCritic
 import re
 
 BATCH_SIZE = 64 # do not set to 1, as BatchNorm won't work
@@ -34,6 +34,8 @@ def weights_init(m):
 def gradient_penalty(critic, real, fake):
 
     epsilon = torch.rand(real.shape[0], 1)
+    # expand to size of real
+    epsilon = epsilon.expand(real.shape[0], int(real.nelement()/real.shape[0])).contiguous().view(real.size())
     if isinstance(real, torch.cuda.FloatTensor):
         epsilon = epsilon.cuda()
 
@@ -55,6 +57,10 @@ def train(args):
     dataset = SVMDataset(args.w0, args.w1, args.feature, split='train')
     dataloader = DataLoader(dataset, batch_size=BATCH_SIZE,
             shuffle=True, num_workers=8, collate_fn=collate_fn)
+    # validation datasets
+    val_dataset = SVMDataset(args.w0, args.w1, args.feature, split='val')
+    val_dataloader = DataLoader(val_dataset, batch_size=BATCH_SIZE,
+            shuffle=False, num_workers=8, collate_fn=collate_fn)
 
     writer = SummaryWriter(args.r)
     
@@ -67,7 +73,10 @@ def train(args):
     
     net = SVMRegressor(square_hinge=args.square_hinge, n_gpu=n_gpu)
     net.apply(weights_init)
-    critic = Critic(n_gpu=n_gpu, gp=args.gp)
+    if args.large_critic:
+        critic = LargeCritic(n_gpu=n_gpu, gp=args.gp)
+    else:
+        critic = Critic(n_gpu=n_gpu, gp=args.gp)
     critic.apply(weights_init)
 
     gen_iterations = 0
@@ -88,6 +97,7 @@ def train(args):
         print("Restoring from model {}".format(latest_gen))
         net.load_state_dict(torch.load(
             os.path.join(args.ckpt, latest_gen)))
+        print("Restoring from model {}".format(latest_critic))
         critic.load_state_dict(torch.load(
             os.path.join(args.ckpt, latest_critic)))
         
@@ -100,20 +110,20 @@ def train(args):
         critic = critic.cuda()
 
     if args.optimiser == 'adam':
-        optimizer = optim.Adam(net.parameters(), lr=args.lr)
-        optimizer_c = optim.Adam(critic.parameters(), lr=args.lr, betas=(0, 0.9))
+        optimizer = optim.Adam(net.parameters(), lr=args.lr_G, betas=(0, 0.9))
+        optimizer_c = optim.Adam(critic.parameters(), lr=args.lr_C, betas=(0, 0.9))
     elif args.optimiser == 'rmsprop':
-        optimizer = optim.RMSprop(net.parameters(), lr=args.lr)
-        optimizer_c = optim.RMSprop(critic.parameters(), lr=args.lr)
+        optimizer = optim.RMSprop(net.parameters(), lr=args.lr_G)
+        optimizer_c = optim.RMSprop(critic.parameters(), lr=args.lr_C)
     elif args.optimiser == 'sgd':
-        optimizer = optim.SGD(net.parameters(), lr=args.lr, momentum=args.momentum)
-        optimizer_c = optim.SGD(critic.parameters(), lr=args.lr, momentum=args.momentum)
+        optimizer = optim.SGD(net.parameters(), lr=args.lr_G, momentum=args.momentum)
+        optimizer_c = optim.SGD(critic.parameters(), lr=args.lr_C, momentum=args.momentum)
     else:
         raise Exception("Optimiser type unkown : {}".format(args.optimiser))
 
     print("Using {} optimiser".format(args.optimiser))
 
-    running_c, running_g, running_hinge, running_grad = 0, 0, 0, 0
+    running_c, running_g, running_hinge, running_grad, running_l2 = 0, 0, 0, 0, 0
     gen_counter, critic_counter = 0, 0
 
     one = torch.FloatTensor([1])
@@ -136,7 +146,7 @@ def train(args):
             for p in critic.parameters():
                 p.requires_grad = True
 
-            if gen_iterations < 25 or gen_iterations % 500 == 0:
+            if gen_iterations < 25:
                 critic_iterations = 100
             else:
                 critic_iterations = args.critic_iters
@@ -162,17 +172,17 @@ def train(args):
 
                 # train with real (w1)
                 errC_real = torch.mean(critic(w1))
-                errC_real.backward(one)
+                errC_real.backward(mone)
 
                 # train with fake
                 fake_w1 = Variable(net(w0).data)
                 errC_fake = torch.mean(critic(fake_w1))
-                errC_fake.backward(mone)
+                errC_fake.backward(one)
 
                 # apply gradient penalty
                 if args.gp:
-                    grad_penalty = args.lambd * gradient_penalty(critic, w1.data, fake_w1.data)
-                    grad_penalty.backward(one)
+                    grad_penalty = gradient_penalty(critic, w1.data, fake_w1.data)
+                    grad_penalty.backward(args.lambd * one)
 
                     running_grad += grad_penalty.data[0]
 
@@ -213,26 +223,27 @@ def train(args):
 
 
                 # train with hinge loss
-                _, hinge_loss = net.loss(regressed_w, w1, train)
+                l2_loss, hinge_loss = net.loss(regressed_w, w1, train)
 
                 # training a pure gan
                 if args.pure_gan:
                     total_loss = err_G
                 else:
-                    total_loss = args.alpha * err_G + hinge_loss
-                total_loss.backward()
+                    total_loss = args.alpha * err_G + args.hinge_weight * hinge_loss + l2_loss
+                total_loss.backward(one)
 
                 optimizer.step()
 
                 running_g += err_G.data[0]
                 running_hinge += hinge_loss.data[0]
+                running_l2 += l2_loss.data[0]
 
                 gen_iterations += 1
                 gen_counter += 1
 
-            print('[%d/%d][%d] Loss_C: %.3f Loss_G: %.3f Loss_C_real: %.3f Loss_C_fake: %.3f Loss_Hinge: %.3f'
+            print('[%d/%d][%d] Loss_C: %.3f Loss_G: %.3f Loss_C_real: %.3f Loss_C_fake: %.3f Loss_Hinge: %.3f Loss_l2: %.3f'
             % (i, len(dataloader), gen_iterations,
-            err_C.data[0], err_G.data[0], errC_real.data[0], errC_fake.data[0], hinge_loss.data[0]))
+            err_C.data[0], err_G.data[0], errC_real.data[0], errC_fake.data[0], hinge_loss.data[0], l2_loss.data[0]))
 
             # write to tensorboard
             if gen_iterations % args.write_every_n == 0:
@@ -242,6 +253,8 @@ def train(args):
                             running_g/gen_counter, gen_iterations)
                     writer.add_scalar('hinge_loss', 
                             running_hinge/gen_counter, gen_iterations)
+                    writer.add_scalar('l2_loss',
+                            running_l2/gen_counter, gen_iterations)
                 if critic_counter > 5:
                     writer.add_scalar('err_D',
                             running_c/critic_counter, gen_iterations)
@@ -256,9 +269,48 @@ def train(args):
                 running_g = 0
                 running_c = 0
                 running_hinge = 0
+                running_l2 = 0
                 running_grad = 0
                 gen_counter = 0
                 critic_counter = 0
+
+            # run validation cycle
+            if gen_iterations % args.validate_every_n == 0:
+
+                # save computation
+                for p in net.parameters():
+                    p.requires_grad = False
+                
+                net.train(False)
+
+                val_l2, val_hinge = 0, 0
+                for val_sample in val_dataloader:
+
+                    w0_val = Variable(val_sample['w0'].float())
+                    w1_val = Variable(val_sample['w1'].float())
+                    train_val = [Variable(t.float()) for t in val_sample['train']]
+
+                    if torch.cuda.is_available():
+                        w0_val = w0_val.cuda()
+                        w1_val = w1_val.cuda()
+                        train_val = [t.cuda() for t in train_val]
+
+                    regressed_val = net(w0_val)
+
+                    val_l2_loss, val_hinge_loss = net.loss(regressed_val, w1_val, train_val)
+
+                    val_l2 += val_l2_loss.data[0]
+                    val_hinge += val_hinge_loss.data[0]
+
+                writer.add_scalar('l2_loss/val', val_l2/len(val_dataloader),
+                        gen_iterations)
+                writer.add_scalar('hinge_loss/val', val_hinge/len(val_dataloader),
+                        gen_iterations)
+
+                # reset params
+                for p in net.parameters():
+                    p.requires_grad = True
+                net.train()
 
             # save model
             if gen_iterations % args.save_every_n == 0:
@@ -293,19 +345,24 @@ if __name__ == "__main__":
     # training args
     parser.add_argument('--critic_iters', type=int, default=5)
     parser.add_argument('--optimiser', type=str, default='sgd')
-    parser.add_argument('--lr', type=float, default=5e-5)
+    parser.add_argument('--lr_C', type=float, default=5e-5)
+    parser.add_argument('--lr_G', type=float, default=5e-5)
     parser.add_argument('--momentum', type=float, default=0.9)
-    parser.add_argument('--alpha', type=float, default=1)
     parser.add_argument('--steps', nargs='+', type=int, default=[3,6])
     parser.add_argument('--step_gamma', type=float, default=0.1)
+    
+    # balancing/architecture args
+    parser.add_argument('--alpha', type=float, default=1)
+    parser.add_argument('--lambda', dest='lambd', type=float, default=10)
+    parser.add_argument('--hinge_weight', type=float, default=1)
     parser.add_argument('--square_hinge', action='store_true')
     parser.add_argument('--pure_gan', action='store_true')
     parser.add_argument('--gp', action='store_true')
-    parser.add_argument('--lambda', dest='lambd', type=float, default=10)
+    parser.add_argument('--large_critic', action='store_true')
 
     # logging args
     parser.add_argument('--write_every_n', type=int, default=100)
-    parser.add_argument('--validate_every_n', type=int, default=5)
+    parser.add_argument('--validate_every_n', type=int, default=500)
     parser.add_argument('--save_every_n', type=int, default=1000)
     parser.add_argument('--n_models_to_keep', type=int, default=1)
     args = parser.parse_args()
