@@ -227,10 +227,10 @@ def train(args):
 
                 # training a pure gan
                 if args.pure_gan:
-                    total_loss = err_G
+                    total_loss = - err_G
                 else:
-                    total_loss = args.alpha * err_G + args.hinge_weight * hinge_loss + l2_loss
-                total_loss.backward(one)
+                    total_loss = args.alpha * -err_G + args.delta * (hinge_loss + l2_loss)
+                total_loss.backward()
 
                 optimizer.step()
 
@@ -352,9 +352,12 @@ if __name__ == "__main__":
     parser.add_argument('--step_gamma', type=float, default=0.1)
     
     # balancing/architecture args
-    parser.add_argument('--alpha', type=float, default=1)
-    parser.add_argument('--lambda', dest='lambd', type=float, default=10)
-    parser.add_argument('--hinge_weight', type=float, default=1)
+    parser.add_argument('--alpha', type=float, default=1,
+            help='adverserial loss weight')
+    parser.add_argument('--delta', type=float, default=1,
+            help='hinge+l2 loss weight')
+    parser.add_argument('--lambda', dest='lambd', type=float, default=10,
+            help='gradient penalty weight for wgan-gp')
     parser.add_argument('--square_hinge', action='store_true')
     parser.add_argument('--pure_gan', action='store_true')
     parser.add_argument('--gp', action='store_true')
