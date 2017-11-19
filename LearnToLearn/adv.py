@@ -31,6 +31,14 @@ def weights_init(m):
         m.weight.data.normal_(1.0, 0.02)
         m.bias.data.fill_(0)
 
+def dropout_train(m):
+    '''
+    Sets dropout modules to train mode, for added noise in the generator
+    '''
+    classname = m.__class__.__name__
+    if classname.find('Dropout') != -1:
+        m.train()
+
 def gradient_penalty(critic, real, fake):
 
     epsilon = torch.rand(real.shape[0], 1)
@@ -71,7 +79,11 @@ def train(args):
     else:
         n_gpu = 0
     
-    net = SVMRegressor(square_hinge=args.square_hinge, n_gpu=n_gpu)
+    net = SVMRegressor(
+            slope=args.slope,
+            dropout=args.dropout,
+            square_hinge=args.square_hinge, 
+            n_gpu=n_gpu)
     net.apply(weights_init)
     if args.large_critic:
         critic = LargeCritic(n_gpu=n_gpu, gp=args.gp)
@@ -281,7 +293,8 @@ def train(args):
                 for p in net.parameters():
                     p.requires_grad = False
                 
-                net.train(False)
+                net.eval()
+                net.apply(dropout_train)
 
                 val_l2, val_hinge = 0, 0
                 for val_sample in val_dataloader:
@@ -358,6 +371,10 @@ if __name__ == "__main__":
             help='hinge+l2 loss weight')
     parser.add_argument('--lambda', dest='lambd', type=float, default=10,
             help='gradient penalty weight for wgan-gp')
+    parser.add_argument('--slope', type=float, default=0.01,
+            help='negative slope for LeakyRelu')
+    parser.add_argument('--dropout', type=float, default=0,
+            help='dropout probability for regressor')
     parser.add_argument('--square_hinge', action='store_true')
     parser.add_argument('--pure_gan', action='store_true')
     parser.add_argument('--gp', action='store_true')

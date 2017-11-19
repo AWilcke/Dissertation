@@ -17,7 +17,7 @@ class LayerNorm(nn.Module):
 
 class SVMRegressor(nn.Module):
 
-    def __init__(self, dropout=False, square_hinge=False, n_gpu=1):
+    def __init__(self, dropout=False, slope=0.01, square_hinge=False, n_gpu=1):
         super(SVMRegressor, self).__init__()
         self.square_hinge = square_hinge
         self.ngpu = n_gpu
@@ -28,15 +28,15 @@ class SVMRegressor(nn.Module):
             nn.Linear(4097, 6144),
             nn.BatchNorm1d(6144),
             *d,
-            nn.LeakyReLU(negative_slope=0.01, inplace=True),
+            nn.LeakyReLU(negative_slope=slope, inplace=True),
             nn.Linear(6144, 5120),
             nn.BatchNorm1d(5120),
             *d,
-            nn.LeakyReLU(negative_slope=0.01, inplace=True),
+            nn.LeakyReLU(negative_slope=slope, inplace=True),
             nn.Linear(5120, 4097),
             nn.BatchNorm1d(4097),
             *d,
-            nn.LeakyReLU(negative_slope=0.01, inplace=True),
+            nn.LeakyReLU(negative_slope=slope, inplace=True),
             nn.Linear(4097, 4097)
             )
 
