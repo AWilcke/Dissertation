@@ -9,6 +9,7 @@ from scipy.io import loadmat
 from models import SVMRegressor
 import os
 import progressbar
+from adv import dropout_train 
 
 def retrain_svm(x, y, net, c=1):
     """
@@ -118,6 +119,7 @@ if __name__ == "__main__":
     parser.add_argument('--n_samples', type=int, default=10)
     parser.add_argument('-C', type=float)
     parser.add_argument('--loss', type=str, default="squared_hinge")
+    parser.add_argument('--dropout', type=float, default=0)
 
     args = parser.parse_args()
 
@@ -132,12 +134,13 @@ if __name__ == "__main__":
     if args.usew0:
         net = None
     else:
-        net = SVMRegressor()
+        net = SVMRegressor(dropout=args.dropout)
         net.load_state_dict(torch.load(args.ckpt))
 
         if torch.cuda.is_available():
             net = net.cuda()
-        net.train(False)
+        net.eval()
+        net.apply(dropout_train)
 
     params = {'loss' : args.loss, 'dual':False}
     if args.C:
