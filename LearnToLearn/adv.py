@@ -9,7 +9,7 @@ from torchvision import transforms
 import argparse
 from tensorboardX import SummaryWriter
 import os
-from models import SVMRegressor, Critic, LargeCritic
+from models import SVMRegressor, Generator8, UGen, Critic3, Critic4, Critic8
 import re
 from collections import defaultdict
 from scoring import score_svm
@@ -19,6 +19,15 @@ import numpy as np
 
 BATCH_SIZE = 64 # do not set to 1, as BatchNorm won't work
 NUM_EPOCHS = 150000
+
+model_dict = {
+        'standard':SVMRegressor,
+        'gen8':Generator8,
+        'ugen':UGen,
+        'critic3':Critic3,
+        'critic4':Critic4,
+        'critic8':Critic8
+        }
 
 def collate_fn(batch):
     # default collate w0, w1
@@ -89,16 +98,15 @@ def train(args):
     else:
         n_gpu = 0
     
-    net = SVMRegressor(
+    
+    net = model_dict[args.gen_name](
             slope=args.slope,
             dropout=args.dropout,
             square_hinge=args.square_hinge, 
             n_gpu=n_gpu)
     net.apply(weights_init)
-    if args.large_critic:
-        critic = LargeCritic(n_gpu=n_gpu, gp=args.gp)
-    else:
-        critic = Critic(n_gpu=n_gpu, gp=args.gp)
+
+    critic = model_dict[args.critic_name](n_gpu=n_gpu, gp=args.gp)
     critic.apply(weights_init)
 
     gen_iterations = 0
@@ -431,7 +439,8 @@ if __name__ == "__main__":
     parser.add_argument('--square_hinge', action='store_true')
     parser.add_argument('--pure_gan', action='store_true')
     parser.add_argument('--gp', action='store_true')
-    parser.add_argument('--large_critic', action='store_true')
+    parser.add_argument('--gen_name',type=str, default='standard')
+    parser.add_argument('--critic_name',type=str, default='critic3')
 
     # logging args
     parser.add_argument('--write_every_n', type=int, default=100)

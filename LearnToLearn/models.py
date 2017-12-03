@@ -113,7 +113,7 @@ class Generator8(SVMRegressor):
 
 class UGen(nn.Module):
 
-    def __init__(self):
+    def __init__(self, *args, **kwargs):
         super().__init__()
         self.fc1 = self.make_fc(4097, 4096)
         self.fc2 = self.make_fc(4096, 2048)
@@ -233,3 +233,43 @@ class Critic4(nn.Module):
         else:
             output = self.main(x)
         return output
+
+def Critic8(Critic4):
+    def __init__(self, n_gpu=1, gp=True):
+        super().__init__()
+        norm_layer = LayerNorm if gp else nn.BatchNorm1d
+        self.main = nn.Sequential(
+                nn.Linear(4097, 4097),
+                norm_layer(4097),
+                nn.LeakyReLU(negative_slope=0.01, inplace=True),
+                nn.Dropout(),
+                nn.Linear(4097, 4097),
+                norm_layer(4097),
+                nn.LeakyReLU(negative_slope=0.01, inplace=True),
+                nn.Dropout(),
+                nn.Linear(4097, 4097),
+                norm_layer(4097),
+                nn.LeakyReLU(negative_slope=0.01, inplace=True),
+                nn.Dropout(),
+                nn.Linear(4097, 4097),
+                norm_layer(4097),
+                nn.LeakyReLU(negative_slope=0.01, inplace=True),
+                nn.Dropout(),
+                nn.Linear(4097, 512),
+                norm_layer(512),
+                nn.LeakyReLU(negative_slope=0.01, inplace=True),
+                nn.Dropout(),
+                nn.Linear(512, 512),
+                norm_layer(512),
+                nn.LeakyReLU(negative_slope=0.01, inplace=True),
+                nn.Dropout(),
+                nn.Linear(512, 512),
+                norm_layer(512),
+                nn.LeakyReLU(negative_slope=0.01, inplace=True),
+                nn.Dropout(),
+                nn.Linear(512, 512),
+                norm_layer(512),
+                nn.LeakyReLU(negative_slope=0.01, inplace=True),
+                nn.Dropout(),
+                nn.Linear(512,1)
+                )
