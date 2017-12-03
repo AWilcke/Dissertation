@@ -5,7 +5,6 @@ from torch.autograd import Variable
 import argparse
 from collections import defaultdict
 import pickle
-from scipy.io import loadmat
 from models import SVMRegressor
 import os
 import progressbar

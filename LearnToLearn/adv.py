@@ -5,11 +5,17 @@ from torch.autograd import Variable
 from dataloader import SVMDataset
 from torch.utils.data import DataLoader
 from torch.utils.data.dataloader import default_collate
+from torchvision import transforms
 import argparse
 from tensorboardX import SummaryWriter
 import os
 from models import SVMRegressor, Critic, LargeCritic
 import re
+from collections import defaultdict
+from scoring import score_svm
+import pickle
+from utils import make_graph_image 
+import numpy as np
 
 BATCH_SIZE = 64 # do not set to 1, as BatchNorm won't work
 NUM_EPOCHS = 150000
@@ -69,6 +75,10 @@ def train(args):
     val_dataset = SVMDataset(args.w0, args.w1, args.feature, split='val')
     val_dataloader = DataLoader(val_dataset, batch_size=BATCH_SIZE,
             shuffle=False, num_workers=8, collate_fn=collate_fn)
+    
+    # store labels for validation
+    with open(args.labels,'rb') as fi:
+        y = pickle.load(fi)
 
     writer = SummaryWriter(args.r)
     
@@ -253,6 +263,10 @@ def train(args):
                 gen_iterations += 1
                 gen_counter += 1
 
+            ########################
+            ####### LOGGING ########
+            ########################
+
             print('[%d/%d][%d] Loss_C: %.3f Loss_G: %.3f Loss_C_real: %.3f Loss_C_fake: %.3f Loss_Hinge: %.3f Loss_l2: %.3f'
             % (i, len(dataloader), gen_iterations,
             err_C.data[0], err_G.data[0], errC_real.data[0], errC_fake.data[0], hinge_loss.data[0], l2_loss.data[0]))
@@ -286,7 +300,30 @@ def train(args):
                 gen_counter = 0
                 critic_counter = 0
 
-            # run validation cycle
+            # save model
+            if gen_iterations % args.save_every_n == 0:
+
+                torch.save(net.state_dict(),
+                        os.path.join(args.ckpt, "{}.ckpt".format(gen_iterations))
+                        )
+                torch.save(critic.state_dict(),
+                        os.path.join(args.ckpt, "{}_critic.ckpt".format(gen_iterations)))
+
+                # remove old models
+                models = [f for f in os.listdir(args.ckpt) if ".ckpt" in f]
+                models = sorted(models,
+                        key=lambda x : int(re.findall(r'\d+', x)[0]),
+                        reverse=True)
+
+                while len(models) > 2 * args.n_models_to_keep:
+                    os.remove(os.path.join(args.ckpt, models.pop()))
+
+            ########################
+            ###### VALIDATION ######
+            ########################
+
+            # get validation metrics for G/C
+            
             if gen_iterations % args.validate_every_n == 0:
 
                 # save computation
@@ -320,30 +357,31 @@ def train(args):
                 writer.add_scalar('hinge_loss/val', val_hinge/len(val_dataloader),
                         gen_iterations)
 
+                # get regressed classification
+                x = val_dataset.features
+
+                svm_params = {'loss' : 'square_hinge', 'dual':False}
+                scores = defaultdict(list)
+                for sample in (os.path.join(args.w0, 'val', w) \
+                        for w in os.listdir(os.path.join(args.w0, 'val'))):
+                    with open(sample, 'rb') as f:
+                        s = pickle.load(f)
+
+                    n, acc = score_svm(s, x, y, net, svm_params=svm_params)
+
+                    scores[n].append(acc)
+
+                accuracies = [np.mean(scores[num]) for num in sorted(scores.keys())]
+                im = make_graph_image(np.arange(len(accuracies)), accuracies)
+                t = transforms.ToTensor()
+
+                writer.add_image('classification', t(im), gen_iterations)
+
                 # reset params
                 for p in net.parameters():
                     p.requires_grad = True
                 net.train()
-
-            # save model
-            if gen_iterations % args.save_every_n == 0:
-
-                torch.save(net.state_dict(),
-                        os.path.join(args.ckpt, "{}.ckpt".format(gen_iterations))
-                        )
-                torch.save(critic.state_dict(),
-                        os.path.join(args.ckpt, "{}_critic.ckpt".format(gen_iterations)))
-
-                # remove old models
-                models = [f for f in os.listdir(args.ckpt) if ".ckpt" in f]
-                models = sorted(models,
-                        key=lambda x : int(re.findall(r'\d+', x)[0]),
-                        reverse=True)
-
-                while len(models) > 2 * args.n_models_to_keep:
-                    os.remove(os.path.join(args.ckpt, models.pop()))
-
-
+            
 
 if __name__ == "__main__":
     
@@ -352,6 +390,7 @@ if __name__ == "__main__":
     parser.add_argument('-w0')
     parser.add_argument('-w1')
     parser.add_argument('-f', dest='feature')
+    parser.add_argument('-l', dest='labels')
     parser.add_argument('-r','--runs', dest='r')
     parser.add_argument('--ckpt')
 
