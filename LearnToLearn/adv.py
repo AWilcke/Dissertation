@@ -357,6 +357,21 @@ def train(args):
                 writer.add_scalar('hinge_loss/val', val_hinge/len(val_dataloader),
                         gen_iterations)
 
+
+                # reset params
+                for p in net.parameters():
+                    p.requires_grad = True
+                net.train()
+
+            if gen_iterations % args.classif_every_n == 0:
+
+                # save computation
+                for p in net.parameters():
+                    p.requires_grad = False
+                
+                net.eval()
+                net.apply(dropout_train)
+            
                 # get regressed classification
                 x = val_dataset.features
 
@@ -381,7 +396,6 @@ def train(args):
                 for p in net.parameters():
                     p.requires_grad = True
                 net.train()
-            
 
 if __name__ == "__main__":
     
@@ -422,6 +436,7 @@ if __name__ == "__main__":
     # logging args
     parser.add_argument('--write_every_n', type=int, default=100)
     parser.add_argument('--validate_every_n', type=int, default=500)
+    parser.add_argument('--classif_every_n', type=int, default=10000)
     parser.add_argument('--save_every_n', type=int, default=1000)
     parser.add_argument('--n_models_to_keep', type=int, default=1)
     args = parser.parse_args()
