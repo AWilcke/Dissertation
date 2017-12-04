@@ -7,6 +7,7 @@ plt.switch_backend('agg')
 def make_graph_image(x, y):
     fig = plt.figure()
     plt.plot(x,y)
+    plt.xticks(x)
     fig.canvas.draw()
 
     w, h  = fig.canvas.get_width_height()
