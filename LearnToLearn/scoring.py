@@ -8,7 +8,8 @@ import pickle
 from models import SVMRegressor
 import os
 import progressbar
-from adv import dropout_train 
+if __name__ == '__main__':
+    from adv import dropout_train 
 
 def retrain_svm(x, y, net, c=1):
     """

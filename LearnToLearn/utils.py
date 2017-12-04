@@ -2,6 +2,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 from torchvision import transforms
 
+plt.switch_backend('agg')
+
 def make_graph_image(x, y):
     fig = plt.figure()
     plt.plot(x,y)

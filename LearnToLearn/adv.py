@@ -5,7 +5,6 @@ from torch.autograd import Variable
 from dataloader import SVMDataset
 from torch.utils.data import DataLoader
 from torch.utils.data.dataloader import default_collate
-from torchvision import transforms
 import argparse
 from tensorboardX import SummaryWriter
 import os
@@ -140,8 +139,8 @@ def train(args):
         critic = critic.cuda()
 
     if args.optimiser == 'adam':
-        optimizer = optim.Adam(net.parameters(), lr=args.lr_G, betas=(0, 0.9))
-        optimizer_c = optim.Adam(critic.parameters(), lr=args.lr_C, betas=(0, 0.9))
+        optimizer = optim.Adam(net.parameters(), lr=args.lr_G, betas=tuple(args.betas))
+        optimizer_c = optim.Adam(critic.parameters(), lr=args.lr_C, betas=tuple(args.betas))
     elif args.optimiser == 'rmsprop':
         optimizer = optim.RMSprop(net.parameters(), lr=args.lr_G)
         optimizer_c = optim.RMSprop(critic.parameters(), lr=args.lr_C)
@@ -372,7 +371,6 @@ def train(args):
                 net.train()
 
             if gen_iterations % args.classif_every_n == 0:
-
                 # save computation
                 for p in net.parameters():
                     p.requires_grad = False
@@ -396,9 +394,8 @@ def train(args):
 
                 accuracies = [np.mean(scores[num]) for num in sorted(scores.keys())]
                 im = make_graph_image(np.arange(len(accuracies)), accuracies)
-                t = transforms.ToTensor()
 
-                writer.add_image('classification', t(im), gen_iterations)
+                writer.add_image('classification', im, gen_iterations)
 
                 # reset params
                 for p in net.parameters():
@@ -419,6 +416,7 @@ if __name__ == "__main__":
     # training args
     parser.add_argument('--critic_iters', type=int, default=5)
     parser.add_argument('--optimiser', type=str, default='sgd')
+    parser.add_argument('--betas', nargs='+', type=float, default=[0, 0.9])
     parser.add_argument('--lr_C', type=float, default=5e-5)
     parser.add_argument('--lr_G', type=float, default=5e-5)
     parser.add_argument('--momentum', type=float, default=0.9)
