@@ -18,13 +18,14 @@ class LayerNorm(nn.Module):
 
 class SVMRegressor(nn.Module):
 
-    def __init__(self, dropout=False, slope=0.01, square_hinge=False, n_gpu=1):
+    def __init__(self, dropout=False, slope=0.01, square_hinge=False, n_gpu=1, tanh=False):
         super(SVMRegressor, self).__init__()
         self.square_hinge = square_hinge
         self.ngpu = n_gpu
 
         # optional dropout param
         d = [nn.Dropout()] if dropout else []
+        t = [nn.Tanh()] if tanh else []
         self.main = nn.Sequential(
             nn.Linear(4097, 6144),
             nn.BatchNorm1d(6144),
@@ -38,7 +39,8 @@ class SVMRegressor(nn.Module):
             nn.BatchNorm1d(4097),
             *copy.deepcopy(d),
             nn.LeakyReLU(negative_slope=slope, inplace=True),
-            nn.Linear(4097, 4097)
+            nn.Linear(4097, 4097),
+            *copy.deepcopy(t)
             )
 
     def forward(self, x):
@@ -74,11 +76,12 @@ class SVMRegressor(nn.Module):
         return l2_loss, hinge_loss
 
 class Generator8(SVMRegressor):
-    def __init__(self, dropout=False, slope=0.01, square_hinge=False, n_gpu=1):
-        super().__init__(dropout=dropout, slope=slope, square_hinge=square_hinge, n_gpu=n_gpu)
+    def __init__(self, *args, dropout=False, slope=0.01, n_gpu=1, tanh=False, **kwargs):
+        super().__init__(dropout=dropout, slope=slope, square_hinge=False, n_gpu=n_gpu)
 
         # optional dropout param
         d = [nn.Dropout()] if dropout else []
+        t = [nn.Tanh()] if tanh else []
         self.main = nn.Sequential(
             nn.Linear(4097, 4097),
             nn.BatchNorm1d(4097),
@@ -108,12 +111,13 @@ class Generator8(SVMRegressor):
             nn.BatchNorm1d(4097),
             *copy.deepcopy(d),
             nn.LeakyReLU(negative_slope=slope, inplace=True),
-            nn.Linear(4097, 4097)
+            nn.Linear(4097, 4097),
+            *copy.deepcopy(t)
             )
 
 class UGen(nn.Module):
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, tanh=False, **kwargs):
         super().__init__()
         self.fc1 = self.make_fc(4097, 4096)
         self.fc2 = self.make_fc(4096, 2048)
@@ -123,6 +127,8 @@ class UGen(nn.Module):
         self.fc6 = self.make_fc(8192, 4097)
         self.fc7 = self.make_fc(8194, 4097)
         self.fc8 = self.make_fc(4097, 4097)
+
+        self.tanh = tanh
 
     def make_fc(self, in_dim, out_dim):
         return nn.Sequential(
@@ -143,7 +149,10 @@ class UGen(nn.Module):
         out_5 = self.fc5(torch.cat([out_4, out_2], dim=1))
         out_6 = self.fc6(torch.cat([out_5, out_1], dim=1))
         out_7 = self.fc7(torch.cat([out_6, x], dim=1))
-        return self.fc8(out_7)
+        out_8 = self.fc8(out_7)
+        if self.tanh:
+            out_8 = nn.Tanh(out_8)
+        return out_8
 
     def loss(self, regressed_w, w1, train):
         l2_loss = .5 * torch.mean(torch.norm(w1.sub(regressed_w), 2, 1).pow(2))

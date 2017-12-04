@@ -101,6 +101,7 @@ def train(args):
     net = model_dict[args.gen_name](
             slope=args.slope,
             dropout=args.dropout,
+            tanh=args.tanh,
             square_hinge=args.square_hinge, 
             n_gpu=n_gpu)
     net.apply(weights_init)
@@ -434,6 +435,8 @@ if __name__ == "__main__":
             help='negative slope for LeakyRelu')
     parser.add_argument('--dropout', type=float, default=0,
             help='dropout probability for regressor')
+    parser.add_argument('--tanh', action='store true',
+            help='use tanh as last layer of generator')
     parser.add_argument('--square_hinge', action='store_true')
     parser.add_argument('--pure_gan', action='store_true')
     parser.add_argument('--gp', action='store_true')
