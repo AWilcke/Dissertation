@@ -59,11 +59,11 @@ def gradient_penalty(critic, real, fake):
     epsilon = torch.rand(real.shape[0], 1)
     # expand to size of real
     epsilon = epsilon.expand(real.size())
+    disturb = real + .5 * torch.std(real) * torch.rand(real.size()).cuda()
 
     if isinstance(real, torch.cuda.FloatTensor):
         epsilon = epsilon.cuda()
-    
-    disturb = real + .5 * torch.std(real) * torch.rand(real.size())
+
     xhat = Variable(epsilon * real + (1-epsilon) * disturb, requires_grad=True)
 
     critic_out = critic(xhat)
@@ -168,6 +168,7 @@ def train(args):
 
     if torch.cuda.is_available():
         one, mone = one.cuda(), mone.cuda()
+        labels_ = labels_.cuda()
 
     while gen_iterations < NUM_EPOCHS:
 
@@ -196,13 +197,13 @@ def train(args):
             optimizer_c.zero_grad()
 
             # train with real (w1)
-            labels_.data.fill(1.)
+            labels_.data.fill_(1.)
             errC_real = loss(critic(w1), labels_)
             errC_real.backward()
 
             # train with fake
             fake_w1 = Variable(net(w0).data)
-            labels_.data.fill(0.)
+            labels_.data.fill_(0.)
             errC_fake = loss(critic(fake_w1), labels_)
             errC_fake.backward()
 
@@ -246,7 +247,7 @@ def train(args):
 
                 # train with critic loss
                 critic_out = critic(regressed_w)
-                labels_.data.fill(1.)
+                labels_.data.fill_(1.)
                 err_G = loss(critic_out, labels_)
 
 
@@ -435,7 +436,7 @@ if __name__ == "__main__":
             help='negative slope for LeakyRelu')
     parser.add_argument('--dropout', type=float, default=0,
             help='dropout probability for regressor')
-    parser.add_argument('--tanh', action='store true',
+    parser.add_argument('--tanh', action='store_true',
             help='use tanh as last layer of generator')
     parser.add_argument('--square_hinge', action='store_true')
     parser.add_argument('--pure_gan', action='store_true')
