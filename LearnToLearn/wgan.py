@@ -395,8 +395,10 @@ def train(args):
 
                 accuracies = [np.mean(scores[num]) for num in sorted(scores.keys())]
                 im = make_graph_image(np.arange(len(accuracies)), accuracies)
+                latex = ''.join(['({:.0f},{:.4f})'.format(n, acc) for n, acc in enumerate(accuracies)])
 
                 writer.add_image('classification', im, gen_iterations)
+                writer.add_text('latex', latex, gen_iterations)
 
                 # reset params
                 for p in net.parameters():
