@@ -8,7 +8,6 @@ def make_graph_image(x, y):
     fig = plt.figure()
     plt.plot(x,y)
     plt.xticks(x)
-    plt.axis([x[0], x[-1], 0, 1])
     fig.canvas.draw()
 
     w, h  = fig.canvas.get_width_height()
