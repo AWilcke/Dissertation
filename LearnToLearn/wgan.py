@@ -15,6 +15,7 @@ from scoring import score_svm
 import pickle
 from utils import make_graph_image 
 import numpy as np
+import resource
 
 BATCH_SIZE = 64 # do not set to 1, as BatchNorm won't work
 NUM_EPOCHS = 150000
@@ -78,11 +79,11 @@ def train(args):
     # training datasets
     dataset = SVMDataset(args.w0, args.w1, args.feature, split='train')
     dataloader = DataLoader(dataset, batch_size=BATCH_SIZE,
-            shuffle=True, num_workers=8, collate_fn=collate_fn)
+            shuffle=True, num_workers=0, collate_fn=collate_fn)
     # validation datasets
     val_dataset = SVMDataset(args.w0, args.w1, args.feature, split='val')
     val_dataloader = DataLoader(val_dataset, batch_size=BATCH_SIZE,
-            shuffle=False, num_workers=8, collate_fn=collate_fn)
+            shuffle=False, num_workers=0, collate_fn=collate_fn)
     
     # store labels for validation
     with open(args.labels,'rb') as fi:
@@ -106,8 +107,11 @@ def train(args):
             n_gpu=n_gpu)
     net.apply(weights_init)
 
-    critic = model_dict[args.critic_name](n_gpu=n_gpu, gp=args.gp)
+    critic = model_dict[args.critic_name](n_gpu=n_gpu, gp=args.gp, dropout=args.no_dropout_C)
     critic.apply(weights_init)
+
+    print(net)
+    print(critic)
 
     gen_iterations = 0
     
@@ -139,19 +143,25 @@ def train(args):
         net = net.cuda()
         critic = critic.cuda()
 
-    if args.optimiser == 'adam':
-        optimizer = optim.Adam(net.parameters(), lr=args.lr_G, betas=tuple(args.betas))
+    if args.optimiser_C == 'adam':
         optimizer_c = optim.Adam(critic.parameters(), lr=args.lr_C, betas=tuple(args.betas))
-    elif args.optimiser == 'rmsprop':
-        optimizer = optim.RMSprop(net.parameters(), lr=args.lr_G)
+    elif args.optimiser_C == 'rmsprop':
         optimizer_c = optim.RMSprop(critic.parameters(), lr=args.lr_C)
-    elif args.optimiser == 'sgd':
-        optimizer = optim.SGD(net.parameters(), lr=args.lr_G, momentum=args.momentum)
+    elif args.optimiser_C == 'sgd':
         optimizer_c = optim.SGD(critic.parameters(), lr=args.lr_C, momentum=args.momentum)
     else:
-        raise Exception("Optimiser type unkown : {}".format(args.optimiser))
+        raise Exception("Optimiser type unkown : {}".format(args.optimiser_C))
 
-    print("Using {} optimiser".format(args.optimiser))
+    if args.optimiser_G == 'adam':
+        optimizer = optim.Adam(net.parameters(), lr=args.lr_G, betas=tuple(args.betas))
+    elif args.optimiser_G == 'rmsprop':
+        optimizer = optim.RMSprop(net.parameters(), lr=args.lr_G)
+    elif args.optimiser_G == 'sgd':
+        optimizer = optim.SGD(net.parameters(), lr=args.lr_G, momentum=args.momentum)
+    else:
+        raise Exception("Optimiser type unkown : {}".format(args.optimiser_G))
+
+    print("Using {}, {} optimisers".format(args.optimiser_C, args.optimiser_G))
 
     running_c, running_g, running_hinge, running_grad, running_l2 = 0, 0, 0, 0, 0
     gen_counter, critic_counter = 0, 0
@@ -407,6 +417,10 @@ def train(args):
 
 if __name__ == "__main__":
     
+    # trying to prevent ancdata error
+    rlimit = resource.getrlimit(resource.RLIMIT_NOFILE)
+    resource.setrlimit(resource.RLIMIT_NOFILE, (4096, rlimit[1]))
+    
     parser = argparse.ArgumentParser()
     # io args
     parser.add_argument('-w0')
@@ -418,7 +432,8 @@ if __name__ == "__main__":
 
     # training args
     parser.add_argument('--critic_iters', type=int, default=5)
-    parser.add_argument('--optimiser', type=str, default='sgd')
+    parser.add_argument('--optimiser_C', type=str, default='sgd')
+    parser.add_argument('--optimiser_G', type=str, default='adam')
     parser.add_argument('--betas', nargs='+', type=float, default=[0, 0.9])
     parser.add_argument('--lr_C', type=float, default=5e-5)
     parser.add_argument('--lr_G', type=float, default=5e-5)
@@ -437,6 +452,8 @@ if __name__ == "__main__":
             help='negative slope for LeakyRelu')
     parser.add_argument('--dropout', type=float, default=0,
             help='dropout probability for regressor')
+    parser.add_argument('--no_dropout_C', action='store_false',
+            help='whether to omit dropout from critic')
     parser.add_argument('--tanh', action='store_true',
             help='use tanh as last layer of generator')
     parser.add_argument('--square_hinge', action='store_true')

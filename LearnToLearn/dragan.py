@@ -56,15 +56,12 @@ def dropout_train(m):
 
 def gradient_penalty(critic, real, fake):
 
-    epsilon = torch.rand(real.shape[0], 1)
-    # expand to size of real
-    epsilon = epsilon.expand(real.size())
-    disturb = real + .5 * torch.std(real) * torch.rand(real.size()).cuda()
-
+    
+    delta = Variable(torch.normal(torch.zeros(real.size()), .1*torch.std(real)))
     if isinstance(real, torch.cuda.FloatTensor):
-        epsilon = epsilon.cuda()
-
-    xhat = Variable(epsilon * real + (1-epsilon) * disturb, requires_grad=True)
+        delta = delta.cuda()
+    x = Variable(real, requires_grad=True)
+    xhat = x + delta
 
     critic_out = critic(xhat)
 
@@ -72,7 +69,7 @@ def gradient_penalty(critic, real, fake):
     if isinstance(real, torch.cuda.FloatTensor):
         ones = ones.cuda()
 
-    grads = autograd.grad(outputs=critic_out, inputs=xhat, grad_outputs=ones,
+    grads = autograd.grad(outputs=critic_out, inputs=x, grad_outputs=ones,
             create_graph=True, only_inputs=True)[0]
 
     return (torch.norm(grads) - 1).pow(2)
@@ -164,7 +161,7 @@ def train(args):
 
     one = torch.FloatTensor([1])
     mone = -1 * one
-    labels_ = Variable(torch.FloatTensor(BATCH_SIZE))
+    labels_ = Variable(torch.FloatTensor(BATCH_SIZE,1))
 
     if torch.cuda.is_available():
         one, mone = one.cuda(), mone.cuda()

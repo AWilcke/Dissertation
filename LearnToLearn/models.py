@@ -179,7 +179,7 @@ class UGen(nn.Module):
 
 class Critic3(nn.Module):
 
-    def __init__(self, n_gpu=1, gp=True):
+    def __init__(self, n_gpu=1, gp=True, **kwargs):
         super().__init__()
         
         norm_layer = LayerNorm if gp else nn.BatchNorm1d
@@ -207,28 +207,29 @@ class Critic3(nn.Module):
 
 class Critic4(nn.Module):
 
-    def __init__(self, n_gpu=1, gp=True):
+    def __init__(self, n_gpu=1, gp=True, dropout=True):
         super().__init__()
         
         norm_layer = LayerNorm if gp else nn.BatchNorm1d
+        d = [nn.Dropout()] if dropout else []
 
         self.main = nn.Sequential(
                 nn.Linear(4097, 4097),
                 norm_layer(4097),
                 nn.LeakyReLU(negative_slope=0.01, inplace=True),
-                nn.Dropout(),
+                *copy.deepcopy(d),
                 nn.Linear(4097, 4097),
                 norm_layer(4097),
                 nn.LeakyReLU(negative_slope=0.01, inplace=True),
-                nn.Dropout(),
+                *copy.deepcopy(d),
                 nn.Linear(4097, 512),
                 norm_layer(512),
                 nn.LeakyReLU(negative_slope=0.01, inplace=True),
-                nn.Dropout(),
+                *copy.deepcopy(d),
                 nn.Linear(512, 512),
                 norm_layer(512),
                 nn.LeakyReLU(negative_slope=0.01, inplace=True),
-                nn.Dropout(),
+                *copy.deepcopy(d),
                 nn.Linear(512,1)
                 )
         self.ngpu = n_gpu
@@ -241,7 +242,7 @@ class Critic4(nn.Module):
         return output
 
 class Critic8(Critic4):
-    def __init__(self, n_gpu=1, gp=True):
+    def __init__(self, n_gpu=1, gp=True, **kwargs):
         super().__init__(n_gpu=n_gpu, gp=gp)
         norm_layer = LayerNorm if gp else nn.BatchNorm1d
         self.main = nn.Sequential(
