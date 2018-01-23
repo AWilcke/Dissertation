@@ -233,8 +233,6 @@ def train(args):
                 Lambda.data += args.rho * Lambda.grad.data
                 Lambda.grad.data.zero_()		
 
-
-
                 err_C = obj_D
                 running_c += err_C.data[0]
                 critic_counter += 1
