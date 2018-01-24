@@ -1,21 +1,18 @@
 import torch
 import torch.optim as optim
-import torch.autograd as autograd
 from torch.autograd import Variable
 from dataloader import SVMDataset
 from torch.utils.data import DataLoader
-from torch.utils.data.dataloader import default_collate
 import argparse
 from tensorboardX import SummaryWriter
 import os
 from models import SVMRegressor, Generator8, UGen, Critic3, Critic4, Critic8
 import re
-from collections import defaultdict
-from scoring import score_svm
 import pickle
-from utils import make_graph_image 
-import numpy as np
+import utils
+from utils import collate_fn, weights_init
 import resource
+import losses
 
 BATCH_SIZE = 64 # do not set to 1, as BatchNorm won't work
 NUM_EPOCHS = 150000
@@ -29,61 +26,15 @@ model_dict = {
         'critic8':Critic8
         }
 
-def collate_fn(batch):
-    # default collate w0, w1
-    out = {key: default_collate([d[key] for d in batch]) for key in ('w0','w1')}
-
-    # list of tensors for training samples
-    out['train'] = [d['train'] for d in batch]
-
-    return out
-
-def weights_init(m):
-    classname = m.__class__.__name__
-    if classname.find('Conv') != -1:
-        m.weight.data.normal_(0.0, 0.02)
-    elif classname.find('BatchNorm') != -1:
-        m.weight.data.normal_(1.0, 0.02)
-        m.bias.data.fill_(0)
-
-def dropout_train(m):
-    '''
-    Sets dropout modules to train mode, for added noise in the generator
-    '''
-    classname = m.__class__.__name__
-    if classname.find('Dropout') != -1:
-        m.train()
-
-def gradient_penalty(critic, real, fake):
-
-    epsilon = torch.rand(real.shape[0], 1)
-    # expand to size of real
-    epsilon = epsilon.expand(real.shape[0], int(real.nelement()/real.shape[0])).contiguous().view(real.size())
-    if isinstance(real, torch.cuda.FloatTensor):
-        epsilon = epsilon.cuda()
-
-    xhat = Variable(epsilon * real + (1-epsilon) * fake, requires_grad=True)
-
-    critic_out = critic(xhat)
-
-    ones = torch.ones(critic_out.size())
-    if isinstance(real, torch.cuda.FloatTensor):
-        ones = ones.cuda()
-
-    grads = autograd.grad(outputs=critic_out, inputs=xhat, grad_outputs=ones,
-            create_graph=True, only_inputs=True)[0]
-
-    return (torch.norm(grads) - 1).pow(2)
-
 def train(args):
     # training datasets
     dataset = SVMDataset(args.w0, args.w1, args.feature, split='train')
     dataloader = DataLoader(dataset, batch_size=BATCH_SIZE,
-            shuffle=True, num_workers=0, collate_fn=collate_fn)
+            shuffle=True, num_workers=0, collate_fn=collate_fn, drop_last=True)
     # validation datasets
     val_dataset = SVMDataset(args.w0, args.w1, args.feature, split='val')
     val_dataloader = DataLoader(val_dataset, batch_size=BATCH_SIZE,
-            shuffle=False, num_workers=0, collate_fn=collate_fn)
+            shuffle=False, num_workers=0, collate_fn=collate_fn, drop_last=True)
     
     # store labels for validation
     with open(args.labels,'rb') as fi:
@@ -102,13 +53,32 @@ def train(args):
     net = model_dict[args.gen_name](
             slope=args.slope,
             dropout=args.dropout,
-            tanh=args.tanh,
             square_hinge=args.square_hinge, 
             n_gpu=n_gpu)
     net.apply(weights_init)
 
     critic = model_dict[args.critic_name](n_gpu=n_gpu, gp=args.gp, dropout=args.no_dropout_C)
     critic.apply(weights_init)
+
+    if args.type == 'wgan':
+        gradient_penalty = losses.wgan_gradient_penalty
+        gen_loss = losses.wgan_gen_loss
+        critic_loss = losses.wgan_critic_loss
+        extra = None# no extra variable needed for wgan
+        print("Using WGAN")
+    elif args.type == 'dragan':
+        gradient_penalty = losses.dragan_gradient_penalty
+        gen_loss = losses.dragan_gen_loss
+        critic_loss = losses.dragan_critic_loss
+        extra = torch.FloatTensor(BATCH_SIZE,1)
+        print("Using DRAGAN")
+    elif args.type == 'fisher':
+        if args.gp:
+            raise Exception('FisherGAN does not support gradient penalty')
+        gen_loss = losses.wgan_gen_loss # fisher uses same gen_loss as wgan
+        critic_loss = losses.fisher_critic_loss
+        extra = torch.FloatTensor([0.]) # lagrange multipliers
+        print("Using FisherGAN")
 
     print(net)
     print(critic)
@@ -163,14 +133,25 @@ def train(args):
 
     print("Using {}, {} optimisers".format(args.optimiser_C, args.optimiser_G))
 
-    running_c, running_g, running_hinge, running_grad, running_l2 = 0, 0, 0, 0, 0
-    gen_counter, critic_counter = 0, 0
+    log_dic = {
+            'C':0,
+            'G':0,
+            'hinge':0,
+            'grad':0,
+            'l2':0,
+            'C_count':0,
+            'G_count':0,
+            }
+    
 
     one = torch.FloatTensor([1])
     mone = -1 * one
 
     if torch.cuda.is_available():
         one, mone = one.cuda(), mone.cuda()
+        extra = extra.cuda()
+
+    extra = Variable(extra, requires_grad=args.type=="fisher")
 
     while gen_iterations < NUM_EPOCHS:
 
@@ -196,10 +177,6 @@ def train(args):
                 j += 1
                 samples = data_iter.next()
                 i+=1
-
-                if not args.gp:
-                    for p in critic.parameters():
-                        p.data.clamp_(-0.01, 0.01)
                 
                 w0 = Variable(samples['w0'].float(), volatile=True)
                 w1 = Variable(samples['w1'].float())
@@ -210,27 +187,23 @@ def train(args):
 
                 optimizer_c.zero_grad()
 
-                # train with real (w1)
-                errC_real = torch.mean(critic(w1))
-                errC_real.backward(mone)
-
-                # train with fake
                 fake_w1 = Variable(net(w0).data)
-                errC_fake = torch.mean(critic(fake_w1))
-                errC_fake.backward(one)
+
+                err_C = critic_loss(critic, w1, fake_w1, one, mone, args, extra)
 
                 # apply gradient penalty
                 if args.gp:
                     grad_penalty = gradient_penalty(critic, w1.data, fake_w1.data)
                     grad_penalty.backward(args.lambd * one)
 
-                    running_grad += grad_penalty.data[0]
+                    log_dic['grad'] += grad_penalty.data[0]
 
                 optimizer_c.step()
 
-                err_C = errC_real - errC_fake
-                running_c += err_C.data[0]
-                critic_counter += 1
+                log_dic['C'] += err_C.data[0]
+                log_dic['C_count'] += 1
+
+                print("ERR_C: {:.3f}".format(err_C.data[0]))
 
             ########################
             ### Update Regressor ###
@@ -259,82 +232,47 @@ def train(args):
 
                 # train with critic loss
                 critic_out = critic(regressed_w)
-                err_G = torch.mean(critic_out)
 
+                err_G = gen_loss(critic_out)
 
                 # train with hinge loss
                 l2_loss, hinge_loss = net.loss(regressed_w, w1, train)
 
                 # training a pure gan
                 if args.pure_gan:
-                    total_loss = - err_G
+                    total_loss = err_G
                 else:
-                    total_loss = args.alpha * -err_G + args.delta * (hinge_loss + l2_loss)
+                    total_loss = args.alpha * err_G + args.delta * (hinge_loss + l2_loss)
+
                 total_loss.backward()
 
+                print("ERR_G: {:.3f}".format(err_G.data[0]))
                 optimizer.step()
 
-                running_g += err_G.data[0]
-                running_hinge += hinge_loss.data[0]
-                running_l2 += l2_loss.data[0]
+                log_dic['G'] += err_G.data[0]
+                log_dic['hinge'] += hinge_loss.data[0]
+                log_dic['l2'] += l2_loss.data[0]
 
                 gen_iterations += 1
-                gen_counter += 1
+                log_dic['G_count'] += 1
 
             ########################
             ####### LOGGING ########
             ########################
 
-            print('[%d/%d][%d] Loss_C: %.3f Loss_G: %.3f Loss_C_real: %.3f Loss_C_fake: %.3f Loss_Hinge: %.3f Loss_l2: %.3f'
-            % (i, len(dataloader), gen_iterations,
-            err_C.data[0], err_G.data[0], errC_real.data[0], errC_fake.data[0], hinge_loss.data[0], l2_loss.data[0]))
-
             # write to tensorboard
             if gen_iterations % args.write_every_n == 0:
-                # make sure we're not writing the tail end of a batch
-                if gen_counter > 5:
-                    writer.add_scalar('err_G', 
-                            running_g/gen_counter, gen_iterations)
-                    writer.add_scalar('hinge_loss', 
-                            running_hinge/gen_counter, gen_iterations)
-                    writer.add_scalar('l2_loss',
-                            running_l2/gen_counter, gen_iterations)
-                if critic_counter > 5:
-                    writer.add_scalar('err_D',
-                            running_c/critic_counter, gen_iterations)
-                    if args.gp:
-                        writer.add_scalar('grad',
-                                running_grad/critic_counter, gen_iterations)
-                writer.add_scalar('learning_rate',
-                        optimizer.state_dict()['param_groups'][0]['lr'],
-                        gen_iterations)
+                log_dic = utils.log_to_tensorboard(log_dic,
+                    optimizer.state_dict()['param_groups'][0]['lr'],
+                    args.gp,
+                    writer,
+                    gen_iterations)
 
-                # reset all counters
-                running_g = 0
-                running_c = 0
-                running_hinge = 0
-                running_l2 = 0
-                running_grad = 0
-                gen_counter = 0
-                critic_counter = 0
 
             # save model
             if gen_iterations % args.save_every_n == 0:
 
-                torch.save(net.state_dict(),
-                        os.path.join(args.ckpt, "{}.ckpt".format(gen_iterations))
-                        )
-                torch.save(critic.state_dict(),
-                        os.path.join(args.ckpt, "{}_critic.ckpt".format(gen_iterations)))
-
-                # remove old models
-                models = [f for f in os.listdir(args.ckpt) if ".ckpt" in f]
-                models = sorted(models,
-                        key=lambda x : int(re.findall(r'\d+', x)[0]),
-                        reverse=True)
-
-                while len(models) > 2 * args.n_models_to_keep:
-                    os.remove(os.path.join(args.ckpt, models.pop()))
+                utils.save_model(net, critic, args, gen_iterations)
 
             ########################
             ###### VALIDATION ######
@@ -344,76 +282,11 @@ def train(args):
             
             if gen_iterations % args.validate_every_n == 0:
 
-                # save computation
-                for p in net.parameters():
-                    p.requires_grad = False
-                
-                net.eval()
-                net.apply(dropout_train)
-
-                val_l2, val_hinge = 0, 0
-                for val_sample in val_dataloader:
-
-                    w0_val = Variable(val_sample['w0'].float())
-                    w1_val = Variable(val_sample['w1'].float())
-                    train_val = [Variable(t.float()) for t in val_sample['train']]
-
-                    if torch.cuda.is_available():
-                        w0_val = w0_val.cuda()
-                        w1_val = w1_val.cuda()
-                        train_val = [t.cuda() for t in train_val]
-
-                    regressed_val = net(w0_val)
-
-                    val_l2_loss, val_hinge_loss = net.loss(regressed_val, w1_val, train_val)
-
-                    val_l2 += val_l2_loss.data[0]
-                    val_hinge += val_hinge_loss.data[0]
-
-                writer.add_scalar('l2_loss/val', val_l2/len(val_dataloader),
-                        gen_iterations)
-                writer.add_scalar('hinge_loss/val', val_hinge/len(val_dataloader),
-                        gen_iterations)
-
-
-                # reset params
-                for p in net.parameters():
-                    p.requires_grad = True
-                net.train()
+                utils.validation_metrics(net, val_dataloader, writer, gen_iterations)
 
             if gen_iterations % args.classif_every_n == 0:
-                # save computation
-                for p in net.parameters():
-                    p.requires_grad = False
-                
-                net.eval()
-                net.apply(dropout_train)
-            
-                # get regressed classification
-                x = val_dataset.features
 
-                svm_params = {'loss' : 'square_hinge', 'dual':False}
-                scores = defaultdict(list)
-                for sample in (os.path.join(args.w0, 'val', w) \
-                        for w in os.listdir(os.path.join(args.w0, 'val'))):
-                    with open(sample, 'rb') as f:
-                        s = pickle.load(f)
-
-                    n, acc = score_svm(s, x, y, net, svm_params=svm_params)
-
-                    scores[n].append(acc)
-
-                accuracies = [np.mean(scores[num]) for num in sorted(scores.keys())]
-                im = make_graph_image(np.arange(len(accuracies)), accuracies)
-                latex = ''.join(['({:.0f},{:.4f})'.format(n+1, acc) for n, acc in enumerate(accuracies)])
-
-                writer.add_image('classification', im, gen_iterations)
-                writer.add_text('latex', latex, gen_iterations)
-
-                # reset params
-                for p in net.parameters():
-                    p.requires_grad = True
-                net.train()
+                utils.check_performance(net, val_dataset, y, writer, args, gen_iterations)
 
 if __name__ == "__main__":
     
@@ -432,8 +305,12 @@ if __name__ == "__main__":
 
     # training args
     parser.add_argument('--critic_iters', type=int, default=5)
-    parser.add_argument('--optimiser_C', type=str, default='sgd')
-    parser.add_argument('--optimiser_G', type=str, default='adam')
+    parser.add_argument('--optimiser_C',
+            choices=['sgd','rmsprop','adam'],
+            default='rmsprop')
+    parser.add_argument('--optimiser_G',
+            choices=['sgd','rmsprop','adam'],
+            default='rmsprop')
     parser.add_argument('--betas', nargs='+', type=float, default=[0, 0.9])
     parser.add_argument('--lr_C', type=float, default=5e-5)
     parser.add_argument('--lr_G', type=float, default=5e-5)
@@ -442,20 +319,24 @@ if __name__ == "__main__":
     parser.add_argument('--step_gamma', type=float, default=0.1)
     
     # balancing/architecture args
+    parser.add_argument('--type', 
+            choices=['wgan','dragan','fisher'],
+            default='wgan',
+            help='type of GAN to use')
     parser.add_argument('--alpha', type=float, default=1,
             help='adverserial loss weight')
     parser.add_argument('--delta', type=float, default=1,
             help='hinge+l2 loss weight')
     parser.add_argument('--lambda', dest='lambd', type=float, default=10,
             help='gradient penalty weight for wgan-gp')
+    parser.add_argument('--rho', type=float, default=1e-6, 
+            help='Weight on the penalty term for (sigmas -1)**2 for fisherGAN')
     parser.add_argument('--slope', type=float, default=0.01,
             help='negative slope for LeakyRelu')
     parser.add_argument('--dropout', type=float, default=0,
             help='dropout probability for regressor')
     parser.add_argument('--no_dropout_C', action='store_false',
             help='whether to omit dropout from critic')
-    parser.add_argument('--tanh', action='store_true',
-            help='use tanh as last layer of generator')
     parser.add_argument('--square_hinge', action='store_true')
     parser.add_argument('--pure_gan', action='store_true')
     parser.add_argument('--gp', action='store_true')
