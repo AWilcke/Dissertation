@@ -34,6 +34,10 @@ def train(args):
     val_dataloader = DataLoader(val_dataset, batch_size=BATCH_SIZE,
             shuffle=False, num_workers=8, collate_fn=collate_fn)
 
+    # store labels for validation
+    with open(args.labels,'rb') as fi:
+        y = pickle.load(fi)
+
     writer = SummaryWriter(args.r)
     
     net = SVMRegressor(square_hinge=args.square_hinge)
@@ -110,81 +114,35 @@ def train(args):
 
             total_loss.backward()
             optimizer.step()
-            
+
             # write to tensorboard
-            if global_step % args.write_every_n == 0 and global_step != 0:
+            if gen_iterations % args.write_every_n == 0:
+                log_dic = utils.log_to_tensorboard(log_dic,
+                    optimizer.state_dict()['param_groups'][0]['lr'],
+                    False,
+                    writer,
+                    gen_iterations)
 
-                writer.add_scalar('total_loss/train', 
-                        (running_l2 + args.lr_weight * running_hinge)/args.write_every_n,
-                        global_step)
-                writer.add_scalar('l2_loss/train',
-                        running_l2/args.write_every_n, global_step)
-                writer.add_scalar('hinge_loss/train',
-                        running_hinge/args.write_every_n, global_step)
-                writer.add_scalar('learning_rate',
-                        optimizer.state_dict()['param_groups'][0]['lr'],
-                        global_step)
 
-                running_l2, running_hinge = 0, 0
+            # save model
+            if gen_iterations % args.save_every_n == 0:
 
-            # run validation cycle
-            if global_step % args.validate_every_n == 0:
-                
-                # clear up space on gpu
-                del w0, w1, train
-                
-                net.train(False)
+                utils.save_model(net, critic, args, gen_iterations)
 
-                val_l2, val_hinge = 0, 0
-                for val_sample in val_dataloader:
+            ########################
+            ###### VALIDATION ######
+            ########################
 
-                    w0_val = Variable(val_sample['w0'].float())
-                    w1_val = Variable(val_sample['w1'].float())
-                    train_val = [Variable(t.float()) for t in val_sample['train']]
-
-                    if torch.cuda.is_available():
-                        w0_val = w0_val.cuda()
-                        w1_val = w1_val.cuda()
-                        train_val = [t.cuda() for t in train_val]
-
-                    regressed_val = net(w0_val)
-
-                    val_l2_loss, val_hinge_loss = net.loss(regressed_val, w1_val, train_val)
-
-                    val_l2 += val_l2_loss.data[0]
-                    val_hinge += val_hinge_loss.data[0]
-
-                writer.add_scalar('l2_loss/val', val_l2/len(val_dataloader),
-                        global_step)
-                writer.add_scalar('hinge_loss/val', val_hinge/len(val_dataloader),
-                        global_step)
-                writer.add_scalar('total_loss/val', 
-                        (val_l2 + args.lr_weight * val_hinge)/len(val_dataloader),
-                        global_step)
-
-                net.train()
+            # get validation metrics for G/C
             
-        
+            if gen_iterations % args.validate_every_n == 0:
 
-        # save model
-        if (epoch + 1) % args.save_every_n == 0:
+                utils.validation_metrics(net, val_dataloader, writer, gen_iterations)
 
-            torch.save(net.state_dict(),
-                    os.path.join(args.ckpt, "{}.ckpt".format(epoch+1))
-                    )
+            if gen_iterations % args.classif_every_n == 0:
 
-            # remove old models
-            models = [os.path.join(args.ckpt, f) for 
-                    f in os.listdir(args.ckpt) if ".ckpt" in f]
-            models = sorted(models, 
-                    key=lambda x : int(os.path.basename(x).split('.')[0]),
-                    reverse=True)
-
-            while len(models) > args.n_models_to_keep:
-                os.remove(models.pop())
-
-
-
+                utils.check_performance(net, val_dataset, y, writer, args, gen_iterations)
+            
 if __name__ == "__main__":
     
     parser = argparse.ArgumentParser()
@@ -208,6 +166,7 @@ if __name__ == "__main__":
     parser.add_argument('--write_every_n', type=int, default=500)
     parser.add_argument('--print_every_n', type=int, default=10)
     parser.add_argument('--validate_every_n', type=int, default=5000)
+    parser.add_argument('--classif_every_n', type=int, default=10000)
     parser.add_argument('--save_every_n', type=int, default=1)
     parser.add_argument('--n_models_to_keep', type=int, default=3)
     args = parser.parse_args()

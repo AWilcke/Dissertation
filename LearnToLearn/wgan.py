@@ -64,6 +64,18 @@ def train(args):
         gradient_penalty = losses.wgan_gradient_penalty
         gen_loss = losses.wgan_gen_loss
         critic_loss = losses.wgan_critic_loss
+        extra = Variable(None) # no extra variable needed for wgan
+    elif args.type == 'dragan':
+        gradient_penalty = losses.dragan_gradient_penalty
+        gen_loss = losses.dragan_gen_loss
+        critic_loss = losses.dragan_critic_loss
+        extra = Variable(torch.FloatTensor(BATCH_SIZE,1))
+    elif args.type == 'fisher':
+        if args.gp:
+            raise Exception('FisherGAN does not support gradient penalty')
+        gen_loss = losses.wgan_gen_loss # fisher uses same gen_loss as wgan
+        critic_loss = losses.fisher_critic_loss
+        extra = Variable(torch.FloatTensor([0]), requires_grad=True) # lagrange multipliers
 
     print(net)
     print(critic)
@@ -134,6 +146,7 @@ def train(args):
 
     if torch.cuda.is_available():
         one, mone = one.cuda(), mone.cuda()
+        extra = extra.cuda()
 
     while gen_iterations < NUM_EPOCHS:
 
@@ -171,7 +184,7 @@ def train(args):
 
                 fake_w1 = Variable(net(w0).data)
 
-                errC_real, errC_fake = critic_loss(critic, w1, fake_w1, one, mone, args.gp)
+                err_C = critic_loss(critic, w1, fake_w1, one, mone, args)
 
                 # apply gradient penalty
                 if args.gp:
@@ -182,7 +195,6 @@ def train(args):
 
                 optimizer_c.step()
 
-                err_C = errC_real - errC_fake
                 log_dic['C'] += err_C.data[0]
                 log_dic['C_count'] += 1
 
