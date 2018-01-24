@@ -37,12 +37,12 @@ def train(args):
     # training datasets
     dataset = SVMDataset(args.w0, args.w1, args.feature, split='train')
     dataloader = DataLoader(dataset, batch_size=BATCH_SIZE,
-            shuffle=True, num_workers=8, collate_fn=collate_fn)
+            shuffle=True, num_workers=0, collate_fn=collate_fn)
 
     # validation datasets
     val_dataset = SVMDataset(args.w0, args.w1, args.feature, split='val')
     val_dataloader = DataLoader(val_dataset, batch_size=BATCH_SIZE,
-            shuffle=False, num_workers=8, collate_fn=collate_fn)
+            shuffle=False, num_workers=0, collate_fn=collate_fn)
 
     # store labels for validation
     with open(args.labels,'rb') as fi:
@@ -151,23 +151,6 @@ def train(args):
 
                 log_dic['l2'], log_dic['hinge'] = 0, 0
 
-            # save model
-            if (epoch + 1) % args.save_every_n == 0:
-
-                torch.save(net.state_dict(),
-                        os.path.join(args.ckpt, "{}.ckpt".format(epoch+1))
-                        )
-
-                # remove old models
-                models = [os.path.join(args.ckpt, f) for 
-                        f in os.listdir(args.ckpt) if ".ckpt" in f]
-                models = sorted(models, 
-                        key=lambda x : int(os.path.basename(x).split('.')[0]),
-                        reverse=True)
-
-                while len(models) > args.n_models_to_keep:
-                    os.remove(models.pop())
-
             ########################
             ###### VALIDATION ######
             ########################
@@ -178,9 +161,27 @@ def train(args):
 
                 utils.validation_metrics(net, val_dataloader, writer, global_step)
 
-            if global_step % args.classif_every_n == 0:
+            if global_step % args.classif_every_n == 0 and global_step != 0:
 
                 utils.check_performance(net, val_dataset, y, writer, args, global_step)
+
+        # save model
+        if (epoch + 1) % args.save_every_n == 0:
+
+            torch.save(net.state_dict(),
+                    os.path.join(args.ckpt, "{}.ckpt".format(epoch+1))
+                    )
+
+            # remove old models
+            models = [os.path.join(args.ckpt, f) for 
+                    f in os.listdir(args.ckpt) if ".ckpt" in f]
+            models = sorted(models, 
+                    key=lambda x : int(os.path.basename(x).split('.')[0]),
+                    reverse=True)
+
+            while len(models) > args.n_models_to_keep:
+                os.remove(models.pop())
+
             
 if __name__ == "__main__":
     
@@ -189,8 +190,16 @@ if __name__ == "__main__":
     parser.add_argument('-w0')
     parser.add_argument('-w1')
     parser.add_argument('-f', dest='feature')
+    parser.add_argument('-l', dest='labels')
     parser.add_argument('-r','--runs', dest='r')
     parser.add_argument('--ckpt')
+
+    # architecture args
+    parser.add_argument('--gen_name',type=str, default='standard')
+    parser.add_argument('--slope', type=float, default=0.01,
+            help='negative slope for LeakyRelu')
+    parser.add_argument('--dropout', type=float, default=0,
+            help='dropout probability for regressor')
 
     # training args
     parser.add_argument('--optimiser', type=str, default='sgd')
@@ -200,7 +209,7 @@ if __name__ == "__main__":
     parser.add_argument('--lr_weight', type=float, default=1)
     # parser.add_argument('--steps', nargs='+', type=int, default=[3,6])
     # parser.add_argument('--step_gamma', type=float, default=0.1)
-    # parser.add_argument('--square_hinge', action='store_true')
+    parser.add_argument('--square_hinge', action='store_true')
 
     # logging args
     parser.add_argument('--write_every_n', type=int, default=500)
