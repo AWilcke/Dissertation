@@ -233,9 +233,9 @@ def train(args):
 
                 # training a pure gan
                 if args.pure_gan:
-                    total_loss = - err_G
+                    total_loss = err_G
                 else:
-                    total_loss = args.alpha * -err_G + args.delta * (hinge_loss + l2_loss)
+                    total_loss = args.alpha * err_G + args.delta * (hinge_loss + l2_loss)
 
                 total_loss.backward()
 

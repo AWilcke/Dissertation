@@ -28,7 +28,7 @@ def wgan_gradient_penalty(critic, real, fake):
 
 def wgan_gen_loss(critic_out, *args, **kwargs):
     err_G = torch.mean(critic_out)
-    return err_G
+    return -err_G
 
 def wgan_critic_loss(critic, w1, fake_w1, one, mone, arg, *args, **kwargs):
     if not arg.gp:
