@@ -158,7 +158,7 @@ def log_to_tensorboard(log_dic, lr, write_gradient, writer, gen_iterations):
         if write_gradient:
             writer.add_scalar('grad',
                     log_dic['grad']/critic_counter, gen_iterations)
-    writer.add_scalar('learning_rate',
+    writer.add_scalar('learning_rate', lr,
             gen_iterations)
 
     # reset all counters

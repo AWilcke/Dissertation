@@ -1,18 +1,28 @@
 import torch
-import torch.nn as nn
 import torch.optim as optim
-from torch.optim import lr_scheduler
 from torch.autograd import Variable
 from dataloader import SVMDataset
 from torch.utils.data import DataLoader
 from torch.utils.data.dataloader import default_collate
+from models import SVMRegressor, Generator8, UGen, Critic3, Critic4, Critic8
 import argparse
 from tensorboardX import SummaryWriter
 import os
-from models import SVMRegressor
+from utils import weights_init
+import utils
+import pickle
 
 BATCH_SIZE = 64 # do not set to 1, as BatchNorm won't work
 NUM_EPOCHS = 100
+
+model_dict = {
+        'standard':SVMRegressor,
+        'gen8':Generator8,
+        'ugen':UGen,
+        'critic3':Critic3,
+        'critic4':Critic4,
+        'critic8':Critic8
+        }
 
 def collate_fn(batch):
     # default collate w0, w1
@@ -39,10 +49,22 @@ def train(args):
         y = pickle.load(fi)
 
     writer = SummaryWriter(args.r)
-    
-    net = SVMRegressor(square_hinge=args.square_hinge)
 
+    # create models
+    if torch.cuda.is_available():
+        n_gpu = torch.cuda.device_count()
+        print("Using {} GPUs".format(n_gpu))
+    else:
+        n_gpu = 0
     
+    
+    net = model_dict[args.gen_name](
+            slope=args.slope,
+            dropout=args.dropout,
+            square_hinge=args.square_hinge, 
+            n_gpu=n_gpu)
+    net.apply(weights_init)
+
     start_epoch = 0
 
     # load model if exists
@@ -63,7 +85,7 @@ def train(args):
         net = net.cuda()
 
     if args.optimiser == 'adam':
-        optimizer = optim.Adam(net.parameters(), lr=args.lr)
+        optimizer = optim.Adam(net.parameters(), lr=args.lr, betas=tuple(args.betas))
     elif args.optimiser == 'rmsprop':
         optimizer = optim.RMSprop(net.parameters(), lr=args.lr)
     elif args.optimiser == 'sgd':
@@ -72,27 +94,25 @@ def train(args):
         raise Exception("Optimiser type not supported : {}".format(args.optimiser))
 
     # lr step
-    lr_schedule = lr_scheduler.MultiStepLR(optimizer, args.steps, gamma=args.step_gamma)
+    # lr_schedule = lr_scheduler.MultiStepLR(optimizer, args.steps, gamma=args.step_gamma)
 
     #update optimiser, in case loading model
-    for i in range(start_epoch):
-        lr_schedule.step()
+    # for i in range(start_epoch):
+        # lr_schedule.step()
+
+    log_dic = {
+            'hinge':0,
+            'l2':0,
+            }
 
     for epoch in range(start_epoch, NUM_EPOCHS):
-        # for keeping track of loss
-        running_l2, running_hinge = 0, 0
-
         # step lr scheduler so epoch is 1-indexed
-        lr_schedule.step() 
+        # lr_schedule.step() 
 
         for b, samples in enumerate(dataloader):
             
             global_step = epoch*len(dataloader) + b
             
-            if global_step % args.print_every_n == 0:
-                print("Global step: {}, Epoch: {}".format(
-                    global_step, epoch), end='\r')
-
             w0 = Variable(samples['w0'].float())
             w1 = Variable(samples['w1'].float())
             train = [Variable(t.float()) for t in samples['train']]
@@ -107,8 +127,8 @@ def train(args):
             optimizer.zero_grad()
             
             l2_loss, hinge_loss = net.loss(regressed_w, w1, train)
-            running_l2 += l2_loss.data[0]
-            running_hinge += hinge_loss.data[0]
+            log_dic['l2'] += l2_loss.data[0]
+            log_dic['hinge'] += hinge_loss.data[0]
 
             total_loss  = l2_loss + args.lr_weight * hinge_loss
 
@@ -116,18 +136,37 @@ def train(args):
             optimizer.step()
 
             # write to tensorboard
-            if gen_iterations % args.write_every_n == 0:
-                log_dic = utils.log_to_tensorboard(log_dic,
-                    optimizer.state_dict()['param_groups'][0]['lr'],
-                    False,
-                    writer,
-                    gen_iterations)
+            if global_step % args.write_every_n == 0 and global_step != 0:
 
+                writer.add_scalar('total_loss', 
+                        (log_dic['l2'] + args.lr_weight * log_dic['hinge'])/args.write_every_n,
+                        global_step)
+                writer.add_scalar('l2_loss',
+                        log_dic['l2']/args.write_every_n, global_step)
+                writer.add_scalar('hinge_loss',
+                        log_dic['hinge']/args.write_every_n, global_step)
+                writer.add_scalar('learning_rate',
+                        optimizer.state_dict()['param_groups'][0]['lr'],
+                        global_step)
+
+                log_dic['l2'], log_dic['hinge'] = 0, 0
 
             # save model
-            if gen_iterations % args.save_every_n == 0:
+            if (epoch + 1) % args.save_every_n == 0:
 
-                utils.save_model(net, critic, args, gen_iterations)
+                torch.save(net.state_dict(),
+                        os.path.join(args.ckpt, "{}.ckpt".format(epoch+1))
+                        )
+
+                # remove old models
+                models = [os.path.join(args.ckpt, f) for 
+                        f in os.listdir(args.ckpt) if ".ckpt" in f]
+                models = sorted(models, 
+                        key=lambda x : int(os.path.basename(x).split('.')[0]),
+                        reverse=True)
+
+                while len(models) > args.n_models_to_keep:
+                    os.remove(models.pop())
 
             ########################
             ###### VALIDATION ######
@@ -135,13 +174,13 @@ def train(args):
 
             # get validation metrics for G/C
             
-            if gen_iterations % args.validate_every_n == 0:
+            if global_step % args.validate_every_n == 0:
 
-                utils.validation_metrics(net, val_dataloader, writer, gen_iterations)
+                utils.validation_metrics(net, val_dataloader, writer, global_step)
 
-            if gen_iterations % args.classif_every_n == 0:
+            if global_step % args.classif_every_n == 0:
 
-                utils.check_performance(net, val_dataset, y, writer, args, gen_iterations)
+                utils.check_performance(net, val_dataset, y, writer, args, global_step)
             
 if __name__ == "__main__":
     
@@ -157,14 +196,14 @@ if __name__ == "__main__":
     parser.add_argument('--optimiser', type=str, default='sgd')
     parser.add_argument('--lr', type=float, default=1e-3)
     parser.add_argument('--momentum', type=float, default=0.9)
+    parser.add_argument('--betas', nargs='+', type=float, default=[0.9, 0.999])
     parser.add_argument('--lr_weight', type=float, default=1)
-    parser.add_argument('--steps', nargs='+', type=int, default=[3,6])
-    parser.add_argument('--step_gamma', type=float, default=0.1)
-    parser.add_argument('--square_hinge', action='store_true')
+    # parser.add_argument('--steps', nargs='+', type=int, default=[3,6])
+    # parser.add_argument('--step_gamma', type=float, default=0.1)
+    # parser.add_argument('--square_hinge', action='store_true')
 
     # logging args
     parser.add_argument('--write_every_n', type=int, default=500)
-    parser.add_argument('--print_every_n', type=int, default=10)
     parser.add_argument('--validate_every_n', type=int, default=5000)
     parser.add_argument('--classif_every_n', type=int, default=10000)
     parser.add_argument('--save_every_n', type=int, default=1)
