@@ -64,18 +64,21 @@ def train(args):
         gradient_penalty = losses.wgan_gradient_penalty
         gen_loss = losses.wgan_gen_loss
         critic_loss = losses.wgan_critic_loss
-        extra = Variable(None) # no extra variable needed for wgan
+        extra = None# no extra variable needed for wgan
+        print("Using WGAN")
     elif args.type == 'dragan':
         gradient_penalty = losses.dragan_gradient_penalty
         gen_loss = losses.dragan_gen_loss
         critic_loss = losses.dragan_critic_loss
-        extra = Variable(torch.FloatTensor(BATCH_SIZE,1))
+        extra = torch.FloatTensor(BATCH_SIZE,1)
+        print("Using DRAGAN")
     elif args.type == 'fisher':
         if args.gp:
             raise Exception('FisherGAN does not support gradient penalty')
         gen_loss = losses.wgan_gen_loss # fisher uses same gen_loss as wgan
         critic_loss = losses.fisher_critic_loss
-        extra = Variable(torch.FloatTensor([0]), requires_grad=True) # lagrange multipliers
+        extra = torch.FloatTensor([0.]) # lagrange multipliers
+        print("Using FisherGAN")
 
     print(net)
     print(critic)
@@ -148,6 +151,8 @@ def train(args):
         one, mone = one.cuda(), mone.cuda()
         extra = extra.cuda()
 
+    extra = Variable(extra, requires_grad=args.type=="fisher")
+
     while gen_iterations < NUM_EPOCHS:
 
         data_iter = iter(dataloader)
@@ -198,6 +203,8 @@ def train(args):
                 log_dic['C'] += err_C.data[0]
                 log_dic['C_count'] += 1
 
+                print("ERR_C: {:.3f}".format(err_C.data[0]))
+
             ########################
             ### Update Regressor ###
             ########################
@@ -239,6 +246,7 @@ def train(args):
 
                 total_loss.backward()
 
+                print("ERR_G: {:.3f}".format(err_G.data[0]))
                 optimizer.step()
 
                 log_dic['G'] += err_G.data[0]

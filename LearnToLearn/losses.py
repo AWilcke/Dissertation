@@ -69,17 +69,17 @@ def dragan_gradient_penalty(critic, real, fake):
 
 def dragan_gen_loss(critic_out, labels_):
     labels_.data.fill(1.)
-    return F.binary_cross_entropy(critic_out, labels_)
+    return F.binary_cross_entropy(F.sigmoid(critic_out), labels_)
 
 def dragan_critic_loss(critic, w1, fake_w1, one, mone, args, labels_):
     # train with real (w1)
     labels_.data.fill_(1.)
-    errC_real = F.binary_cross_entropy(critic(w1), labels_)
+    errC_real = F.binary_cross_entropy(F.sigmoid(critic(w1)), labels_)
     errC_real.backward()
 
     # train with fake
     labels_.data.fill_(0.)
-    errC_fake = F.binary_cross_entropy(critic(fake_w1), labels_)
+    errC_fake = F.binary_cross_entropy(F.sigmoid(critic(fake_w1)), labels_)
     errC_fake.backward()
 
     errC = errC_real + errC_fake
