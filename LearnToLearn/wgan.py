@@ -30,11 +30,11 @@ def train(args):
     # training datasets
     dataset = SVMDataset(args.w0, args.w1, args.feature, split='train')
     dataloader = DataLoader(dataset, batch_size=BATCH_SIZE,
-            shuffle=True, num_workers=0, collate_fn=collate_fn)
+            shuffle=True, num_workers=0, collate_fn=collate_fn, drop_last=True)
     # validation datasets
     val_dataset = SVMDataset(args.w0, args.w1, args.feature, split='val')
     val_dataloader = DataLoader(val_dataset, batch_size=BATCH_SIZE,
-            shuffle=False, num_workers=0, collate_fn=collate_fn)
+            shuffle=False, num_workers=0, collate_fn=collate_fn, drop_last=True)
     
     # store labels for validation
     with open(args.labels,'rb') as fi:
@@ -184,7 +184,7 @@ def train(args):
 
                 fake_w1 = Variable(net(w0).data)
 
-                err_C = critic_loss(critic, w1, fake_w1, one, mone, args)
+                err_C = critic_loss(critic, w1, fake_w1, one, mone, args, extra)
 
                 # apply gradient penalty
                 if args.gp:
