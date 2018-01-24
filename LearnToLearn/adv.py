@@ -297,8 +297,12 @@ if __name__ == "__main__":
 
     # training args
     parser.add_argument('--critic_iters', type=int, default=5)
-    parser.add_argument('--optimiser_C', type=str, default='sgd')
-    parser.add_argument('--optimiser_G', type=str, default='adam')
+    parser.add_argument('--optimiser_C',
+            choices=['sgd','rmsprop','adam'],
+            default='rmsprop')
+    parser.add_argument('--optimiser_G',
+            choices=['sgd','rmsprop','adam'],
+            default='rmsprop')
     parser.add_argument('--betas', nargs='+', type=float, default=[0, 0.9])
     parser.add_argument('--lr_C', type=float, default=5e-5)
     parser.add_argument('--lr_G', type=float, default=5e-5)
@@ -308,7 +312,9 @@ if __name__ == "__main__":
     
     # balancing/architecture args
     parser.add_argument('--type', 
-            help='type of GAN to use, one of "wgan", "dragan" or "fisher"')
+            choices=['wgan','dragan','fisher'],
+            default='wgan',
+            help='type of GAN to use')
     parser.add_argument('--alpha', type=float, default=1,
             help='adverserial loss weight')
     parser.add_argument('--delta', type=float, default=1,
