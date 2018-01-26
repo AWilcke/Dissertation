@@ -4,12 +4,40 @@ from torch.autograd import Variable
 from models import MLP_100
 from argparse import ArgumentParser
 from dataset import MNISTbyClass
+import itertools
+import os
 
 BATCH_SIZE = 2
 VAL_BATCH = 200
 NUM_EPOCHS = 50
 
-def main(args):
+parser = ArgumentParser()
+
+parser.add_argument('--val_interval', type=int, default=1,
+       help='Epoch interval for validation cycle')
+parser.add_argument('--patience', type=int, default=10,
+       help='Patience for early stopping')
+
+parser.add_argument('--lr', type=float, default=0.001,
+       help='Learning rate')
+parser.add_argument('--optim',
+       choices=['sgd','adam','rms'],
+       default='sgd')
+parser.add_argument('--momentum', type=float, default=0.9,
+       help='Momentum for SGD')
+parser.add_argument('--betas', nargs='+', type=float,
+       default=[0.9, 0.999])
+parser.add_argument('--weight_decay', type=float,
+       default=0.)
+
+parser.add_argument('-n', type=int)
+parser.add_argument('--train', type=bool, default=True)
+parser.add_argument('--label', type=int)
+
+parser.add_argument('--output', type=str, default='/dev/null',
+       help='Where to save the model to')
+
+def main(args, logging=True):
     data = MNISTbyClass('data/mnist','data/mnist/index.pickle', args.label, args.n, args.train, True)
 
     val = MNISTbyClass('data/mnist','data/mnist/index.pickle', args.label, 800, args.train, False)
@@ -102,44 +130,57 @@ def main(args):
             if acc > max_acc:
                 max_val = (epoch, acc)
 
-            val_text = "Val: {:.2e} Acc: {:.3f}".format(
+            val_text = "Val: {:.2e} | Acc: {:.3f}".format(
                     log['V_err']/log['V_count'], acc)
 
-            print("Epoch {:2d} | {} | {} |".format(epoch, train_text, val_text))
+            if logging:
+                print("Epoch {:2d} | {} | {} |".format(epoch, train_text, val_text))
 
         # check if should early stop
         max_epoch, _ = max_val
 
         if epoch - max_epoch > args.patience * args.val_interval:
-            print("No progress in {} epochs, stopping training."
-                    .format(args.patience * args.val_interval))
+            if logging:
+                print("No progress in {} epochs, stopping training."
+                        .format(args.patience * args.val_interval))
             break
+
+    torch.save(net.state_dict(), args.output)
 
 if __name__ == '__main__':
 
-   parser = ArgumentParser()
-   
-   parser.add_argument('--val_interval', type=int, default=1,
-           help='Epoch interval for validation cycle')
-   parser.add_argument('--patience', type=int, default=10,
-           help='Patience for early stopping')
+    optims = [
+            # 'sgd --momentum 0',
+            # 'sgd --momentum 0.5',
+            'sgd --momentum 0.9',
+            # 'adam',
+            # 'rmsprop'
+            ]
+    # ns = range(1, 101)
+    # lrs = [1e-2, 1e-3]
+    # wds = [0, 1e-3]
 
-   parser.add_argument('--lr', type=float, default=0.001,
-           help='Learning rate')
-   parser.add_argument('--optim',
-           choices=['sgd','adam','rms'],
-           default='sgd')
-   parser.add_argument('--momentum', type=float, default=0.9,
-           help='Momentum for SGD')
-   parser.add_argument('--betas', nargs='+', type=float,
-           default=[0.9, 0.999])
-   parser.add_argument('--weight_decay', type=float,
-           default=0.)
+    ns = [10]
+    lrs = [1e-3]
+    wds = [0]
+    labels = range(2,10)
+    
 
-   parser.add_argument('-n', type=int)
-   parser.add_argument('--train', type=bool, default=True)
-   parser.add_argument('--label', type=int)
+    for label in labels:
+        count = 0
+        for optim, n, lr, wd in itertools.product(optims, ns, lrs, wds):
+            # format
+            name = '{}_{}'.format(label, count)
+            output = os.path.join('data/mnist/w0/train', name)
+            arg_str = '--optim {} -n {} --lr {} --weight_decay {} --label {} --output {}'\
+                    .format(optim, n, lr, wd, label, output)
 
-   args = parser.parse_args()
+            # train
+            args = parser.parse_args(arg_str.split())
+            main(args, False)
 
-   main(args)
+            count += 1
+
+    # args = parser.parse_args()
+
+    # main(args, False)
