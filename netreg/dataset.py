@@ -19,9 +19,9 @@ class MNISTbyClass(Dataset):
         relevant_labels = range(2,10) if train_labels else range(2)
 
         with open(index, 'rb') as f:
-            index = pickle.load(f)
+            index = pickle.load(f)[train_split]
 
-        self.data = torchvision.datasets.MNIST(root, train=True,
+        self.data = torchvision.datasets.MNIST(root, train=train_split,
                 transform=T.Compose([
                     T.ToTensor(),
                     T.Lambda(lambda t : t.view(-1))

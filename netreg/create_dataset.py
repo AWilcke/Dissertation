@@ -6,13 +6,13 @@ from argparse import ArgumentParser
 from dataset import MNISTbyClass
 
 BATCH_SIZE = 2
-VAL_BATCH = 250
-NUM_EPOCHS = 100
+VAL_BATCH = 200
+NUM_EPOCHS = 50
 
 def main(args):
     data = MNISTbyClass('data/mnist','data/mnist/index.pickle', args.label, args.n, args.train, True)
 
-    val = MNISTbyClass('data/mnist','data/mnist/index.pickle', args.label, 1000, args.train, False)
+    val = MNISTbyClass('data/mnist','data/mnist/index.pickle', args.label, 800, args.train, False)
 
     loader = DataLoader(data, batch_size=BATCH_SIZE,
             shuffle=True, num_workers=0, drop_last=True)
