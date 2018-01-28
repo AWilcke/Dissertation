@@ -6,6 +6,7 @@ from argparse import ArgumentParser
 from dataset import MNISTbyClass
 import itertools
 import os
+import pickle
 
 BATCH_SIZE = 2
 VAL_BATCH = 200
@@ -145,7 +146,14 @@ def main(args, logging=True):
                         .format(args.patience * args.val_interval))
             break
 
-    torch.save(net.state_dict(), args.output)
+    out = {
+            'weights': net.state_dict(),
+            'correct_i': data.correct_i,
+            'wrong_i': data.wrong_i,
+            }
+
+    with open(args.output,'wb') as f:
+        pickle.dump(out,f)
 
 if __name__ == '__main__':
 

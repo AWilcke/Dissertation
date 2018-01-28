@@ -34,11 +34,11 @@ class MNISTbyClass(Dataset):
             if num != label and num in relevant_labels:
                 false += ind
 
-        correct_i = np.random.choice(index[label], size=n, replace=False)
-        wrong_i = np.random.choice(false, size=n, replace=False)
+        self.correct_i = np.random.choice(index[label], size=n, replace=False)
+        self.wrong_i = np.random.choice(false, size=n, replace=False)
 
         # store set of indices and whether they are correct or not
-        self.index = [(1, i) for i in correct_i] + [(0,i) for i in wrong_i]
+        self.index = [(1, i) for i in self.correct_i] + [(0,i) for i in self.wrong_i]
 
     def __len__(self):
         return len(self.index)
