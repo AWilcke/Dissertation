@@ -13,7 +13,8 @@ class MNISTbyClass(Dataset):
             index (string) : path to "index.pickle" file
             label (int) : which label is the postive sample
             n (int) : number of images to sample
-            train (bool) : train or validation set
+            train_labels (bool) : train or validation label set
+            train_split (bool) : train or validation data split
         """
 
         relevant_labels = range(2,10) if train_labels else range(2)
@@ -21,7 +22,7 @@ class MNISTbyClass(Dataset):
         with open(index, 'rb') as f:
             index = pickle.load(f)[train_split]
 
-        self.data = torchvision.datasets.MNIST(root, train=train_split,
+        self.data = torchvision.datasets.MNIST(root, train=train_split, download=True,
                 transform=T.Compose([
                     T.ToTensor(),
                     T.Lambda(lambda t : t.view(-1))

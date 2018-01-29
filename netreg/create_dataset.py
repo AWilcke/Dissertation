@@ -32,16 +32,16 @@ parser.add_argument('--weight_decay', type=float,
        default=0.)
 
 parser.add_argument('-n', type=int)
-parser.add_argument('--train', type=bool, default=True)
+parser.add_argument('--val', action='store_false')
 parser.add_argument('--label', type=int)
 
 parser.add_argument('--output', type=str, default='/dev/null',
        help='Where to save the model to')
 
 def main(args, logging=True):
-    data = MNISTbyClass('data/mnist','data/mnist/index.pickle', args.label, args.n, args.train, True)
+    data = MNISTbyClass('data/mnist','data/mnist/index.pickle', args.label, args.n, args.val, True)
 
-    val = MNISTbyClass('data/mnist','data/mnist/index.pickle', args.label, 800, args.train, False)
+    val = MNISTbyClass('data/mnist','data/mnist/index.pickle', args.label, 800, args.val, False)
 
     loader = DataLoader(data, batch_size=BATCH_SIZE,
             shuffle=True, num_workers=0, drop_last=True)
@@ -158,21 +158,23 @@ def main(args, logging=True):
 if __name__ == '__main__':
 
     optims = [
-            # 'sgd --momentum 0',
-            # 'sgd --momentum 0.5',
+            'sgd --momentum 0',
+            'sgd --momentum 0.5',
             'sgd --momentum 0.9',
-            # 'adam',
-            # 'rmsprop'
+            'adam',
+            'rms'
             ]
-    # ns = range(1, 101)
-    # lrs = [1e-2, 1e-3]
-    # wds = [0, 1e-3]
+    ns = range(1, 51)
+    lrs = [1e-2, 1e-3]
+    wds = [0, 1e-3]
 
-    ns = [10]
-    lrs = [1e-3]
-    wds = [0]
-    labels = range(2,10)
-    
+    # ns = [10]
+    # lrs = [1e-3]
+    # wds = [0]
+    # labels = range(2,10)
+    labels = [0,1]
+
+    val = '' if parser.parse_args().val else '--val'
 
     for label in labels:
         count = 0
@@ -180,12 +182,15 @@ if __name__ == '__main__':
             # format
             name = '{}_{}'.format(label, count)
             output = os.path.join('data/mnist/w0/train', name)
-            arg_str = '--optim {} -n {} --lr {} --weight_decay {} --label {} --output {}'\
-                    .format(optim, n, lr, wd, label, output)
 
-            # train
-            args = parser.parse_args(arg_str.split())
-            main(args, False)
+            if not os.path.exists(output):
+                arg_str = '--optim {} -n {} --lr {} --weight_decay {} --label {} --output {} {}'\
+                        .format(optim, n, lr, wd, label, output, val)
+                print(arg_str)
+
+                # train
+                args = parser.parse_args(arg_str.split())
+                main(args, False)
 
             count += 1
 
