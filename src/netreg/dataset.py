@@ -52,18 +52,26 @@ class MNISTbyClass(Dataset):
 
 class MLP_Dataset(Dataset):
 
-    def __init__(self, root, train=True):
+    def __init__(self, w0, w1, train=True):
 
         split = 'train' if train else 'val'
-        p = Path(root) / split
+        p = Path(w0) / split
 
         self.file_list = list(p.glob('*/*'))
+        self.label_list = [x.parts[-2] for x in self.file_list]
+
+        self.w1 = Path(w1) / split
     
     def __len__(self):
         return len(self.file_list)
 
     def __getitem__(self, idx):
+        # get info from w0
         with open(self.file_list[idx], 'rb') as f:
             sample = pickle.load(f)
+        
+        # then associated w1 weights
+        with open(self.w1 / self.label_list[idx], 'rb') as f:
+            sample['w1'] = pickle.load(f)
 
         return sample
