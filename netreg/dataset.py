@@ -3,6 +3,7 @@ import torchvision
 from torch.utils.data import Dataset
 import pickle
 import numpy as np
+from pathlib import Path
 
 class MNISTbyClass(Dataset):
 
@@ -48,3 +49,21 @@ class MNISTbyClass(Dataset):
         label, index = self.index[idx]
         img, _ = self.data[index]
         return (img, label)
+
+class MLP_Dataset(Dataset):
+
+    def __init__(self, root, train=True):
+
+        split = 'train' if train else 'val'
+        p = Path(root) / split
+
+        self.file_list = list(p.glob('*/*'))
+    
+    def __len__(self):
+        return len(self.file_list)
+
+    def __getitem__(self, idx):
+        with open(self.file_list[idx], 'rb') as f:
+            sample = pickle.load(f)
+
+        return sample
