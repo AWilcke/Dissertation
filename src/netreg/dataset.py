@@ -53,7 +53,7 @@ class MNISTbyClass(Dataset):
 
 class MLP_Dataset(Dataset):
 
-    def __init__(self, w0, w1, train=True):
+    def __init__(self, w0, w1, mnist, train=True):
 
         split = 'train' if train else 'val'
         p = Path(w0) / split
@@ -62,6 +62,13 @@ class MLP_Dataset(Dataset):
         self.label_list = [x.parts[-2] for x in self.file_list]
 
         self.w1 = Path(w1) / split
+
+        self.data = torchvision.datasets.MNIST(mnist, train=True, download=True,
+                transform=T.Compose([
+                    T.ToTensor(),
+                    T.Lambda(lambda t : t.view(-1))
+                    ])
+                )
     
     def __len__(self):
         return len(self.file_list)
@@ -72,17 +79,20 @@ class MLP_Dataset(Dataset):
             sample = pickle.load(f)
 
         # transform state_dict into batcheable format
-        for i, layer in enumerate(utils.dict_to_tensor_list(sample['weights'])):
-            sample["w0_{}".format(i)] = layer
+
+        sample['w0'] = utils.dict_to_tensor_list(sample['weights'])
+
+        # remove actual state_dict
+        del sample['weights']
 
         # then associated w1 weights
         with open(self.w1 / self.label_list[idx], 'rb') as f:
             sample['w1'] = pickle.load(f)
 
-        for i, layer in enumerate(utils.dict_to_tensor_list(sample['w1'])):
-            sample["w1_{}".format(i)] = layer
+        sample['w1'] = utils.dict_to_tensor_list(sample['w1'])
 
-        # finally remove actual state_dict
-        del sample['weights'], sample['w1']
+        sample['train'] = [(self.data[i][0], 1) for i in sample['correct_i']] + \
+                [(self.data[i][0], 0) for i in sample['wrong_i']]
 
+        del sample['wrong_i'], sample['correct_i']
         return sample

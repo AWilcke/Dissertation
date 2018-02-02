@@ -18,11 +18,15 @@ def make_graph_image(x, y):
     return t(buf)
 
 def collate_fn(batch):
-    # default collate w0, w1
-    out = {key: default_collate([d[key] for d in batch]) for key in ('w0','w1')}
+    layers = len(batch[0]['w0'])
+
+    out = {}
+    for key in ('w0','w1'):
+        for i in range(layers):
+            out[key][i] = default_collate(d[key][i] for d in batch)
 
     # list of tensors for training samples
-    out['train'] = [d['train'] for d in batch]
+    out['train'] = [default_collate(d['train']) for d in batch]
 
     return out
 
