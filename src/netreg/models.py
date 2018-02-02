@@ -1,4 +1,6 @@
 import torch.nn as nn
+from torch.autograd import Variable
+import torch
 
 class MLP_100(nn.Module):
 
@@ -32,11 +34,52 @@ class MLP_Regressor(nn.Module):
         self.layer1 = _make_layer(100*100)
         self.layer2 = _make_layer(100)
 
-        self.layer_dict = {
-                0: self.layer0,
-                1: self.layer1,
-                2: self.layer2,
-                }
+        self.layers = [self.layer0,
+                self.layer1,
+                self.layer2,
+                ]
 
-    def forward(self, x, layer):
-        return self.layer_dict[layer](x)
+    def forward(self, x):
+        return [self.layers[i](l) for i, l in enumerate(x)]
+
+    def l2_loss(self, regressed_w, w1):
+
+        l2 = Variable(torch.zeros(1))
+        batch = w1[0].size()[0]
+
+        for regress, target in zip(regressed_w, w1):
+            l2 += .5 * torch.mean(
+                    torch.norm(
+                        regress.view(batch,-1) - target.view(batch, -1),
+                        p=2, dim=1)).pow(2)
+        return l2
+    
+    def perf_loss(self, regressed_w, train, labels):
+
+        hinge = Variable(torch.zeros(1))
+        
+        # easy access to stuff
+        l = []
+        for i, tensor in enumerate(regressed_w):
+            d = {}
+            d['weight'] = tensor[:,:,:-1]
+            d['bias'] = tensor[:,:,-1]
+            l.append(d)
+
+        # iterate through batch
+        for b in range(regressed_w[0].size()[0]):
+            ipt = train[b]
+            y = labels[b]
+
+            # run through all but last layer
+            for layer in range(len(l)-1):
+                ipt = torch.matmul(ipt, l[layer]['weight'][b].transpose(0,1)) + l[layer]['bias'][b]
+                ipt = nn.functional.relu(ipt)
+            
+            # last layer + sigmoid for prob
+            pred = torch.matmul(ipt, l[-1]['weight'][b].transpose(0,1)) + l[-1]['bias'][b]
+            pred = nn.functional.sigmoid(pred)
+
+            hinge += torch.nn.functional.binary_cross_entropy(pred, y) 
+
+        return hinge
