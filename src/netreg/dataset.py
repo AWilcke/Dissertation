@@ -4,6 +4,7 @@ from torch.utils.data import Dataset
 import pickle
 import numpy as np
 from pathlib import Path
+import utils
 
 class MNISTbyClass(Dataset):
 
@@ -69,9 +70,19 @@ class MLP_Dataset(Dataset):
         # get info from w0
         with open(self.file_list[idx], 'rb') as f:
             sample = pickle.load(f)
-        
+
+        # transform state_dict into batcheable format
+        for i, layer in enumerate(utils.dict_to_tensor_list(sample['weights'])):
+            sample["w0_{}".format(i)] = layer
+
         # then associated w1 weights
         with open(self.w1 / self.label_list[idx], 'rb') as f:
             sample['w1'] = pickle.load(f)
+
+        for i, layer in enumerate(utils.dict_to_tensor_list(sample['w1'])):
+            sample["w1_{}".format(i)] = layer
+
+        # finally remove actual state_dict
+        del sample['weights'], sample['w1']
 
         return sample
