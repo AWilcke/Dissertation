@@ -22,8 +22,9 @@ def collate_fn(batch):
 
     out = {}
     for key in ('w0','w1'):
+        out[key] = []
         for i in range(layers):
-            out[key][i] = default_collate(d[key][i] for d in batch)
+            out[key].append(default_collate([d[key][i] for d in batch]))
 
     # list of tensors for training samples
     out['train'] = [default_collate(d['train']) for d in batch]
