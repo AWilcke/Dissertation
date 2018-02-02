@@ -27,7 +27,7 @@ def collate_fn(batch):
             out[key].append(default_collate([d[key][i] for d in batch]))
 
     # list of tensors for training samples
-    out['train'] = [default_collate(d['train']) for d in batch]
+    out['train'] = [d['train'] for d in batch]
 
     return out
 
