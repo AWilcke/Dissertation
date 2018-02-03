@@ -42,6 +42,32 @@ class MLP_Regressor(nn.Module):
     def forward(self, x):
         return [self.layers[i](l) for i, l in enumerate(x)]
 
+    def tensor_dict(self, weights):
+        l = []
+        for i, tensor in enumerate(weights):
+            d = {}
+            d['weight'] = tensor[:,:,:-1]
+            d['bias'] = tensor[:,:,-1]
+            l.append(d)
+
+        return l
+
+
+    def fprop(self, l, ipt, b):
+        """
+        Forward propagate through the regressed layers, using input ipt and b-th network from l
+        """
+        # run through all but last layer
+        for layer in range(len(l)-1):
+            ipt = torch.matmul(ipt, l[layer]['weight'][b].transpose(0,1)) + l[layer]['bias'][b]
+            ipt = nn.functional.relu(ipt)
+        
+        # last layer + sigmoid for prob
+        pred = torch.matmul(ipt, l[-1]['weight'][b].transpose(0,1)) + l[-1]['bias'][b]
+        pred = nn.functional.sigmoid(pred)
+
+        return pred
+
     def l2_loss(self, regressed_w, w1):
 
         l2 = Variable(torch.zeros(1))
@@ -59,27 +85,13 @@ class MLP_Regressor(nn.Module):
         hinge = Variable(torch.zeros(1))
         
         # easy access to stuff
-        l = []
-        for i, tensor in enumerate(regressed_w):
-            d = {}
-            d['weight'] = tensor[:,:,:-1]
-            d['bias'] = tensor[:,:,-1]
-            l.append(d)
+        l = self.tensor_dict(regressed_w)
 
         # iterate through batch
         for b in range(regressed_w[0].size()[0]):
             ipt = train[b]
             y = labels[b]
-
-            # run through all but last layer
-            for layer in range(len(l)-1):
-                ipt = torch.matmul(ipt, l[layer]['weight'][b].transpose(0,1)) + l[layer]['bias'][b]
-                ipt = nn.functional.relu(ipt)
-            
-            # last layer + sigmoid for prob
-            pred = torch.matmul(ipt, l[-1]['weight'][b].transpose(0,1)) + l[-1]['bias'][b]
-            pred = nn.functional.sigmoid(pred)
-
+            pred = self.frop(l, ipt, b)
             hinge += torch.nn.functional.binary_cross_entropy(pred, y) 
 
         return hinge
