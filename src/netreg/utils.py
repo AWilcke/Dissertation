@@ -5,6 +5,9 @@ import torch
 from torch.utils.data.dataloader import default_collate
 from torch.autograd import Variable
 from collections import defaultdict
+from utils import MNISTbyClass
+from torch.utils.data import DataLoader
+
 
 def make_graph_image(x, y):
     plt.switch_backend('agg')
@@ -27,6 +30,8 @@ def collate_fn(batch):
         out[key] = []
         for i in range(layers):
             out[key].append(default_collate([d[key][i] for d in batch]))
+
+    out['label'] = default_collate([d['label'] for d in batch])
 
     # list of tensors for training samples
     out['train'] = [d['train'] for d in batch]
@@ -112,7 +117,7 @@ def validation_metrics(net, val_dataloader, writer, global_step):
         p.requires_grad = True
     net.train()
 
-def check_performance(net, val_dataloader, mnist, writer, args, global_step):
+def check_performance(net, val_dataloader, writer, args, global_step):
     # save computation
     for p in net.parameters():
         p.requires_grad = False
@@ -135,10 +140,11 @@ def check_performance(net, val_dataloader, mnist, writer, args, global_step):
         total = defaultdict(int)
 
         for b in range(regressed_val[0].size(0)):
-            for _ in range(10):
-                ipt, labels = None, None #TODO get mnist by class or something
-                n = val_sample['train'][b][1].size(0)
+            mnist = MNISTbyClass(args.mnist, args.index, int(val_sample['label'][b]), train_labels=False, train_split=False)
+            loader = DataLoader(mnist, batch_size=256, num_workers=0)
+            n = val_sample['train'][b][1].size(0)
 
+            for ipt, labels in loader:
                 out = net.fprop(l, ipt, b)
                 pred = (out.data > 0.5).float()
                 correct[n] += (pred==labels.data).sum()

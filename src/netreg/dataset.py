@@ -95,5 +95,7 @@ class MLP_Dataset(Dataset):
         sample['train'] = default_collate([(self.data[i][0], 1) for i in sample['correct_i']] + \
                 [(self.data[i][0], 0) for i in sample['wrong_i']])
 
+        sample['label'] = self.label_list[idx]
+
         del sample['wrong_i'], sample['correct_i']
         return sample

@@ -154,7 +154,7 @@ def train(args):
 
             if global_step % args.classif_every_n == 0 and global_step != 0:
 
-                utils.check_performance(net, val_dataset, y, writer, args, global_step)
+                utils.check_performance(net, val_dataloader, writer, args, global_step)
 
         # save model
         if (epoch + 1) % args.save_every_n == 0:
@@ -180,15 +180,13 @@ if __name__ == "__main__":
     # io args
     parser.add_argument('-w0')
     parser.add_argument('-w1')
-    parser.add_argument('-f', dest='feature')
-    parser.add_argument('-l', dest='labels')
+    parser.add_argument('--mnist')
+    parser.add_argument('--index')
     parser.add_argument('-r','--runs', dest='r')
     parser.add_argument('--ckpt')
 
     # architecture args
-    parser.add_argument('--gen_name',type=str, default='standard')
-    parser.add_argument('--slope', type=float, default=0.01,
-            help='negative slope for LeakyRelu')
+    parser.add_argument('--net',type=str, default='mlp_reg')
     parser.add_argument('--dropout', type=float, default=0,
             help='dropout probability for regressor')
 
@@ -197,10 +195,6 @@ if __name__ == "__main__":
     parser.add_argument('--lr', type=float, default=1e-3)
     parser.add_argument('--momentum', type=float, default=0.9)
     parser.add_argument('--betas', nargs='+', type=float, default=[0.9, 0.999])
-    parser.add_argument('--lr_weight', type=float, default=1)
-    # parser.add_argument('--steps', nargs='+', type=int, default=[3,6])
-    # parser.add_argument('--step_gamma', type=float, default=0.1)
-    parser.add_argument('--square_hinge', action='store_true')
 
     # logging args
     parser.add_argument('--write_every_n', type=int, default=500)
