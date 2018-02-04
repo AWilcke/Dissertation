@@ -4,7 +4,7 @@ from torch.utils.data import Dataset
 import pickle
 import numpy as np
 from pathlib import Path
-import utils
+from utils import dict_to_tensor_list
 from torch.utils.data.dataloader import default_collate
 
 class MNISTbyClass(Dataset):
@@ -81,16 +81,16 @@ class MLP_Dataset(Dataset):
 
         # transform state_dict into batcheable format
 
-        sample['w0'] = utils.dict_to_tensor_list(sample['weights'])
+        sample['w0'] = dict_to_tensor_list(sample['weights'])
 
         # remove actual state_dict
         del sample['weights']
 
         # then associated w1 weights
-        with open(self.w1 / self.label_list[idx], 'rb') as f:
+        with open(self.w1 / self.label_list[idx] / "{}_0".format(self.label_list[idx]), 'rb') as f:
             sample['w1'] = pickle.load(f)
 
-        sample['w1'] = utils.dict_to_tensor_list(sample['w1'])
+        sample['w1'] = dict_to_tensor_list(sample['w1'])
 
         sample['train'] = default_collate([(self.data[i][0], 1) for i in sample['correct_i']] + \
                 [(self.data[i][0], 0) for i in sample['wrong_i']])
