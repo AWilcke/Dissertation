@@ -1,7 +1,7 @@
 import torch
 import torch.optim as optim
 from torch.autograd import Variable
-from dataloader import MLP_Dataset
+from dataset import MLP_Dataset
 from torch.utils.data import DataLoader
 from models import MLP_100, MLP_Regressor
 from utils import collate_fn
@@ -9,8 +9,9 @@ import argparse
 from tensorboardX import SummaryWriter
 import os
 import utils
+import scoring
 
-BATCH_SIZE = 64 # do not set to 1, as BatchNorm won't work
+BATCH_SIZE = 2 # do not set to 1, as BatchNorm won't work
 NUM_EPOCHS = 100
 
 model_dict = {
@@ -20,12 +21,12 @@ model_dict = {
 
 def train(args):
     # training datasets
-    dataset = MLP_Dataset(args.w0, args.w1, train=True)
+    dataset = MLP_Dataset(args.w0, args.w1, args.mnist, train=True)
     dataloader = DataLoader(dataset, batch_size=BATCH_SIZE,
             shuffle=True, num_workers=0, collate_fn=collate_fn)
 
     # validation datasets
-    val_dataset = MLP_Dataset(args.w0, args.w1, train=False)
+    val_dataset = MLP_Dataset(args.w0, args.w1, args.mnist, train=False)
     val_dataloader = DataLoader(val_dataset, batch_size=BATCH_SIZE,
             shuffle=False, num_workers=0, collate_fn=collate_fn)
 
@@ -126,6 +127,8 @@ def train(args):
             total_loss.backward()
             optimizer.step()
 
+            print(log_dic)
+
             # write to tensorboard
             if global_step % args.write_every_n == 0 and global_step != 0:
 
@@ -150,11 +153,11 @@ def train(args):
             
             if global_step % args.validate_every_n == 0:
 
-                utils.validation_metrics(net, val_dataloader, writer, global_step)
+                scoring.validation_metrics(net, val_dataloader, writer, global_step)
 
             if global_step % args.classif_every_n == 0 and global_step != 0:
 
-                utils.check_performance(net, val_dataloader, writer, args, global_step)
+                scoring.check_performance(net, val_dataloader, writer, args, global_step)
 
         # save model
         if (epoch + 1) % args.save_every_n == 0:

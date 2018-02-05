@@ -4,7 +4,7 @@ import torch
 
 class MLP_100(nn.Module):
 
-    def __init__(self):
+    def __init__(self, *args, **kwargs):
         super().__init__()
         self.main = nn.Sequential(
                 nn.Linear(784,100),
@@ -20,19 +20,19 @@ class MLP_100(nn.Module):
         return y
 
 class MLP_Regressor(nn.Module):
-    def __init__(self):
+    def __init__(self, *args, **kwargs):
 
         def _make_layer(h_dim):
             return nn.Sequential(
                     nn.Linear(h_dim, h_dim),
-                    nn.ReLU,
+                    nn.ReLU(),
                     nn.Linear(h_dim, h_dim),
                     )
 
         super().__init__()
-        self.layer0 = _make_layer(784*100)
-        self.layer1 = _make_layer(100*100)
-        self.layer2 = _make_layer(100)
+        self.layer0 = _make_layer(785*10)
+        self.layer1 = _make_layer(101*10)
+        self.layer2 = _make_layer(101)
 
         self.layers = [self.layer0,
                 self.layer1,
@@ -40,6 +40,8 @@ class MLP_Regressor(nn.Module):
                 ]
 
     def forward(self, x):
+        def _layer_forward(layer, x):
+
         return [self.layers[i](l) for i, l in enumerate(x)]
 
     def tensor_dict(self, weights):

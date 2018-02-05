@@ -182,17 +182,21 @@ if __name__ == '__main__':
     optims = [
             'rms'
             ]
-    ns = [25]
+    ns = [5000]
     lrs = [1e-3]
     wds = [1e-3]
+    labels = range(10)
     # labels = range(2,10)
-    labels = [0,1]
+    # labels = [0,1]
 
     split = 'train' if parser.parse_args().val else 'val'
     stage = 'w1' if parser.parse_args().w1 else 'w0'
 
     for label in labels:
         count = 0
+
+        split = 'val' if label in {0,1} else 'train' #hacky overwriting
+
         for optim, n, lr, wd in itertools.product(optims, ns, lrs, wds):
             # format
             name = '{}_{}'.format(label, count)

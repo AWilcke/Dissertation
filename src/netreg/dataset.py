@@ -88,7 +88,7 @@ class MLP_Dataset(Dataset):
 
         # then associated w1 weights
         with open(self.w1 / self.label_list[idx] / "{}_0".format(self.label_list[idx]), 'rb') as f:
-            sample['w1'] = pickle.load(f)
+            sample['w1'] = pickle.load(f)['weights']
 
         sample['w1'] = dict_to_tensor_list(sample['w1'])
 
