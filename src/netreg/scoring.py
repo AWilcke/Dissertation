@@ -4,6 +4,7 @@ from torch.utils.data import DataLoader
 from collections import defaultdict
 from utils import make_graph_image, dropout_train
 from dataset import MNISTbyClass
+import numpy as np
 
 def validation_metrics(net, val_dataloader, writer, global_step):
 

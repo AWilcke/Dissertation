@@ -3,11 +3,6 @@ import numpy as np
 from torchvision import transforms
 import torch
 from torch.utils.data.dataloader import default_collate
-from torch.autograd import Variable
-from collections import defaultdict
-import dataset
-from torch.utils.data import DataLoader
-
 
 def make_graph_image(x, y):
     plt.switch_backend('agg')

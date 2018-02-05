@@ -8,7 +8,6 @@ from utils import collate_fn
 import argparse
 from tensorboardX import SummaryWriter
 import os
-import utils
 import scoring
 
 BATCH_SIZE = 2 # do not set to 1, as BatchNorm won't work

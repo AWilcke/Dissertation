@@ -195,7 +195,7 @@ if __name__ == '__main__':
     for label in labels:
         count = 0
 
-        split = 'val' if label in {0,1} else 'train' #hacky overwriting
+        # split = 'val' if label in {0,1} else 'train' #hacky overwriting
 
         for optim, n, lr, wd in itertools.product(optims, ns, lrs, wds):
             # format

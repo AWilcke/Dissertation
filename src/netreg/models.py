@@ -41,8 +41,30 @@ class MLP_Regressor(nn.Module):
 
     def forward(self, x):
         def _layer_forward(layer, x):
+            hidden_dim, input_dim = x.size()
+            
+            # number of units in each block
+            block_size = layer.state_dict()['0.weight'].size(0) / input_dim 
 
-        return [self.layers[i](l) for i, l in enumerate(x)]
+            if block_size != int(block_size):
+                raise Exception("Incompatible size for input_dim")
+
+            block_size = int(block_size)
+
+            if hidden_dim % block_size != 0:
+                raise Exception("Incompatible block size")
+
+            num_blocks = hidden_dim // block_size # number of blocks to concat to get right out size
+            reshaped = x.view(num_blocks, block_size, input_dim)
+
+            out = []
+
+            for i in range(num_blocks):
+                out.append(layer(reshaped[i,:,:].view(-1)).view(block_size, input_dim))
+
+            return torch.cat(out, dim=1)
+
+        return [_layer_forward(self.layers[i], l) for i, l in enumerate(x)]
 
     def tensor_dict(self, weights):
         l = []
