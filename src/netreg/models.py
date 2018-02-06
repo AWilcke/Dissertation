@@ -20,7 +20,7 @@ class MLP_100(nn.Module):
         return y
 
 class MLP_Regressor(nn.Module):
-    def __init__(self, *args, **kwargs):
+    def __init__(self, block_size=10, *args, **kwargs):
 
         def _make_layer(h_dim):
             return nn.Sequential(
@@ -30,9 +30,11 @@ class MLP_Regressor(nn.Module):
                     )
 
         super().__init__()
-        self.layer0 = _make_layer(785*10)
-        self.layer1 = _make_layer(101*10)
+        self.layer0 = _make_layer(785*block_size)
+        self.layer1 = _make_layer(101*block_size)
         self.layer2 = _make_layer(101)
+
+        self.block_size = block_size
 
         self.layers = [self.layer0,
                 self.layer1,
@@ -43,24 +45,16 @@ class MLP_Regressor(nn.Module):
         def _layer_forward(layer, x):
             hidden_dim, input_dim = x.size()
             
-            # number of units in each block
-            block_size = layer.state_dict()['0.weight'].size(0) / input_dim 
-
-            if block_size != int(block_size):
-                raise Exception("Incompatible size for input_dim")
-
-            block_size = int(block_size)
-
-            if hidden_dim % block_size != 0:
+            if hidden_dim % self.block_size != 0:
                 raise Exception("Incompatible block size")
 
-            num_blocks = hidden_dim // block_size # number of blocks to concat to get right out size
-            reshaped = x.view(num_blocks, block_size, input_dim)
+            num_blocks = hidden_dim // self.block_size # number of blocks to concat to get right out size
+            reshaped = x.view(num_blocks, self.block_size, input_dim)
 
             out = []
 
             for i in range(num_blocks):
-                out.append(layer(reshaped[i,:,:].view(-1)).view(block_size, input_dim))
+                out.append(layer(reshaped[i,:,:].view(-1)).view(self.block_size, input_dim))
 
             return torch.cat(out, dim=1)
 
