@@ -43,18 +43,22 @@ class MLP_Regressor(nn.Module):
 
     def forward(self, x):
         def _layer_forward(layer, x):
-            hidden_dim, input_dim = x.size()
-            
-            if hidden_dim % self.block_size != 0:
-                raise Exception("Incompatible block size")
+            batch, hidden_dim, input_dim = x.size()
 
-            num_blocks = hidden_dim // self.block_size # number of blocks to concat to get right out size
-            reshaped = x.view(num_blocks, self.block_size, input_dim)
+            block_size = 1 if hidden_dim == 1 else self.block_size
+            
+            assert hidden_dim % block_size == 0, "hidden_dim({}) is not a multiple of block_size ({})".format(hidden_dim, block_size)
+
+            num_blocks = hidden_dim // block_size # number of blocks to concat to get right out size
+            reshaped = x.view(batch, num_blocks, block_size*input_dim)
+            reshaped = reshaped.transpose(0,1) # get batch in there
 
             out = []
 
             for i in range(num_blocks):
-                out.append(layer(reshaped[i,:,:].view(-1)).view(self.block_size, input_dim))
+                regressed = layer(reshaped[i,:,:].contiguous().view(batch, -1))
+                regressed = regressed.view(batch, block_size, input_dim)
+                out.append(regressed)
 
             return torch.cat(out, dim=1)
 
@@ -89,6 +93,7 @@ class MLP_Regressor(nn.Module):
     def l2_loss(self, regressed_w, w1):
 
         l2 = Variable(torch.zeros(1))
+        l2 = l2.cuda() if w1[0].is_cuda else l2
         batch = w1[0].size()[0]
 
         for regress, target in zip(regressed_w, w1):
@@ -101,6 +106,7 @@ class MLP_Regressor(nn.Module):
     def perf_loss(self, regressed_w, train, labels):
 
         hinge = Variable(torch.zeros(1))
+        hinge = hinge.cuda() if regressed_w[0].is_cuda else hinge
         
         # easy access to stuff
         l = self.tensor_dict(regressed_w)
@@ -109,7 +115,7 @@ class MLP_Regressor(nn.Module):
         for b in range(regressed_w[0].size()[0]):
             ipt = train[b]
             y = labels[b]
-            pred = self.frop(l, ipt, b)
-            hinge += torch.nn.functional.binary_cross_entropy(pred, y) 
+            pred = self.fprop(l, ipt, b)
+            hinge += torch.nn.functional.binary_cross_entropy(pred, y.view(-1,1))
 
         return hinge

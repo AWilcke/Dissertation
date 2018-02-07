@@ -95,9 +95,9 @@ def train(args):
 
             # copy data to variables
             for a, b in zip(w0, samples['w0']):
-                a.copy_(b)
+                a.data.copy_(b)
             for a, b in zip(w1, samples['w1']):
-                a.copy_(b)
+                a.data.copy_(b)
             
             # dynamically create train and labels, as size varies
             train = []
@@ -121,18 +121,16 @@ def train(args):
             log_dic['l2'] += l2_loss.data[0]
             log_dic['hinge'] += hinge_loss.data[0]
 
-            total_loss  = l2_loss + args.lr_weight * hinge_loss
+            total_loss  = l2_loss + hinge_loss
 
             total_loss.backward()
             optimizer.step()
-
-            print(log_dic)
 
             # write to tensorboard
             if global_step % args.write_every_n == 0 and global_step != 0:
 
                 writer.add_scalar('total_loss', 
-                        (log_dic['l2'] + args.lr_weight * log_dic['hinge'])/args.write_every_n,
+                        (log_dic['l2'] + log_dic['hinge'])/args.write_every_n,
                         global_step)
                 writer.add_scalar('l2',
                         log_dic['l2']/args.write_every_n, global_step)

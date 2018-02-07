@@ -18,8 +18,8 @@ def validation_metrics(net, val_dataloader, writer, global_step):
     val_l2, val_hinge = 0, 0
     for val_sample in val_dataloader:
 
-        w0_val = [Variable(x) for x in val_sample['w0'].float()]
-        w1_val = [Variable(x) for x in val_sample['w1'].float()]
+        w0_val = [Variable(x.float()) for x in val_sample['w0']]
+        w1_val = [Variable(x.float()) for x in val_sample['w1']]
 
         train_val = []
         labels_val = []
