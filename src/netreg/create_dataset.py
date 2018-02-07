@@ -158,7 +158,7 @@ def main(args, logging=True):
             break
 
     out = {
-            'weights': {key: weights.cpu() for key, weights in net.state_dict()},
+            'weights': {key: weights.cpu() for key, weights in net.state_dict().items()},
             'correct_i': data.correct_i,
             'wrong_i': data.wrong_i,
             }
@@ -182,6 +182,7 @@ if __name__ == '__main__':
     optims = [
             'rms'
             ]
+
     ns = [5000]
     lrs = [1e-3]
     wds = [1e-3]
