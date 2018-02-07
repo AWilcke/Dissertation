@@ -158,7 +158,7 @@ def main(args, logging=True):
             break
 
     out = {
-            'weights': net.state_dict(),
+            'weights': {key: weights.cpu() for key, weights in net.state_dict()},
             'correct_i': data.correct_i,
             'wrong_i': data.wrong_i,
             }
