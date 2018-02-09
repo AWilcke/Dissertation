@@ -7,7 +7,6 @@ from torch.utils.data.dataloader import default_collate
 from collections import defaultdict
 import os
 import pickle
-import utils
 from scoring import score_svm
 import re
 
@@ -112,7 +111,7 @@ def check_performance(net, val_dataset, y, writer, args, gen_iterations):
         scores[n].append(acc)
 
     accuracies = [np.mean(scores[num]) for num in sorted(scores.keys())]
-    im = utils.make_graph_image(np.arange(len(accuracies)), accuracies)
+    im = make_graph_image(np.arange(len(accuracies)), accuracies)
     latex = ''.join(['({:.0f},{:.4f})'.format(n+1, acc) for n, acc in enumerate(accuracies)])
 
     writer.add_image('classification', im, gen_iterations)

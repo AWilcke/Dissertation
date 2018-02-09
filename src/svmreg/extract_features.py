@@ -14,7 +14,7 @@ import progressbar
 
 model_urls = {
     'alexnet': 'https://download.pytorch.org/models/alexnet-owt-4df8aa71.pth',
-    'local': '../models/',
+    'local': '../../models/',
 }
 
 BATCH_SIZE = 256
