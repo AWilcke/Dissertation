@@ -98,4 +98,5 @@ class MLP_Dataset(Dataset):
         sample['label'] = self.label_list[idx]
 
         del sample['wrong_i'], sample['correct_i']
+
         return sample
