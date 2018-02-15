@@ -54,12 +54,16 @@ def validation_metrics(net, val_dataloader, writer, global_step):
     net.train()
 
 def check_performance(net, val_dataloader, writer, args, global_step):
+    print('Starting check performance')
     # save computation
     for p in net.parameters():
         p.requires_grad = False
     
     net.eval()
     net.apply(dropout_train)
+
+    correct = defaultdict(int)
+    total = defaultdict(int)
 
     for val_sample in val_dataloader:
 
@@ -72,28 +76,31 @@ def check_performance(net, val_dataloader, writer, args, global_step):
 
         l = net.tensor_dict(regressed_val)
 
-        correct = defaultdict(int)
-        total = defaultdict(int)
 
         for b in range(regressed_val[0].size(0)):
             mnist = MNISTbyClass(args.mnist, args.index, int(val_sample['label'][b]), 800, train_labels=False, train_split=False)
             loader = DataLoader(mnist, batch_size=256, num_workers=0)
-            n = val_sample['train'][b][1].size(0)
+            n = val_sample['train'][b][1].size(0) // 2
+
 
             for ipt, labels in loader:
                 ipt = Variable(ipt, volatile=True)
+                labels = labels.view(-1,1)
 
                 if torch.cuda.is_available():
                     ipt = ipt.cuda()
                     labels = labels.cuda()
 
-
                 out = net.fprop(l, ipt, b)
                 pred = (out.data > 0.5).float()
+
+                assert labels.size(0) == pred.size(0)
+
                 correct[n] += (pred==labels.float()).sum()
                 total[n] += labels.size(0)
 
     accuracies = [correct[n]/total[n] for num in sorted(correct.keys())]
+    # print(accuracies)
     im = make_graph_image(np.arange(1,len(accuracies)+1), accuracies)
     latex = ''.join(['({:.0f},{:.4f})'.format(n+1, acc) for n, acc in enumerate(accuracies)])
 

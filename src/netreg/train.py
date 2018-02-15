@@ -36,6 +36,7 @@ def train(args):
         n_gpu = torch.cuda.device_count()
         print("Using {} GPUs".format(n_gpu))
     else:
+        print("Using CPU")
         n_gpu = 0
     
     
@@ -184,6 +185,7 @@ if __name__ == "__main__":
     parser.add_argument('--index')
     parser.add_argument('-r','--runs', dest='r')
     parser.add_argument('--ckpt')
+    parser.add_argument('--cpu', action='store_true')
 
     # architecture args
     parser.add_argument('--net',type=str, default='mlp_reg')
@@ -203,5 +205,8 @@ if __name__ == "__main__":
     parser.add_argument('--save_every_n', type=int, default=1)
     parser.add_argument('--n_models_to_keep', type=int, default=3)
     args = parser.parse_args()
+
+    if args.cpu:
+        torch.cuda.is_available = lambda : False
 
     train(args)
