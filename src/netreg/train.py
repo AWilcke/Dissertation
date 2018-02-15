@@ -10,7 +10,7 @@ from tensorboardX import SummaryWriter
 import os
 import scoring
 
-BATCH_SIZE = 2 # do not set to 1, as BatchNorm won't work
+BATCH_SIZE = 64 # do not set to 1, as BatchNorm won't work
 NUM_EPOCHS = 100
 
 model_dict = {

@@ -63,7 +63,7 @@ def check_performance(net, val_dataloader, writer, args, global_step):
 
     for val_sample in val_dataloader:
 
-        w0_val = [Variable(x) for x in val_sample['w0'].float()]
+        w0_val = [Variable(x.float()) for x in val_sample['w0']]
 
         if torch.cuda.is_available():
             w0_val = [x.cuda() for x in w0_val]
@@ -76,14 +76,21 @@ def check_performance(net, val_dataloader, writer, args, global_step):
         total = defaultdict(int)
 
         for b in range(regressed_val[0].size(0)):
-            mnist = MNISTbyClass(args.mnist, args.index, int(val_sample['label'][b]), train_labels=False, train_split=False)
+            mnist = MNISTbyClass(args.mnist, args.index, int(val_sample['label'][b]), 800, train_labels=False, train_split=False)
             loader = DataLoader(mnist, batch_size=256, num_workers=0)
             n = val_sample['train'][b][1].size(0)
 
             for ipt, labels in loader:
+                ipt = Variable(ipt, volatile=True)
+
+                if torch.cuda.is_available():
+                    ipt = ipt.cuda()
+                    labels = labels.cuda()
+
+
                 out = net.fprop(l, ipt, b)
                 pred = (out.data > 0.5).float()
-                correct[n] += (pred==labels.data).sum()
+                correct[n] += (pred==labels.float()).sum()
                 total[n] += labels.size(0)
 
     accuracies = [correct[n]/total[n] for num in sorted(correct.keys())]
