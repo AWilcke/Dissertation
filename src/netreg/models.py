@@ -19,51 +19,13 @@ class MLP_100(nn.Module):
         y = self.main(x)
         return y
 
-class MLP_Regressor(nn.Module):
-    def __init__(self, block_size=10, *args, **kwargs):
-
-        def _make_layer(h_dim):
-            return nn.Sequential(
-                    nn.Linear(h_dim, h_dim),
-                    nn.ReLU(),
-                    nn.Linear(h_dim, h_dim),
-                    )
-
+class BaseRegressor(nn.Module):
+    def __init__(self):
         super().__init__()
-        self.layer0 = _make_layer(785*block_size)
-        self.layer1 = _make_layer(101*block_size)
-        self.layer2 = _make_layer(101)
-
-        self.block_size = block_size
-
-        self.layers = [self.layer0,
-                self.layer1,
-                self.layer2,
-                ]
 
     def forward(self, x):
-        def _layer_forward(layer, x):
-            batch, hidden_dim, input_dim = x.size()
-
-            block_size = 1 if hidden_dim == 1 else self.block_size
-            
-            assert hidden_dim % block_size == 0, "hidden_dim({}) is not a multiple of block_size ({})".format(hidden_dim, block_size)
-
-            num_blocks = hidden_dim // block_size # number of blocks to concat to get right out size
-            reshaped = x.view(batch, num_blocks, block_size*input_dim)
-            reshaped = reshaped.transpose(0,1) # get batch in there
-
-            out = []
-
-            for i in range(num_blocks):
-                regressed = layer(reshaped[i,:,:].contiguous().view(batch, -1))
-                regressed = regressed.view(batch, block_size, input_dim)
-                out.append(regressed)
-
-            return torch.cat(out, dim=1)
-
-        return [_layer_forward(self.layers[i], l) for i, l in enumerate(x)]
-
+        pass
+    
     def tensor_dict(self, weights):
         l = []
         for i, tensor in enumerate(weights):
@@ -73,7 +35,6 @@ class MLP_Regressor(nn.Module):
             l.append(d)
 
         return l
-
 
     def fprop(self, l, ipt, b):
         """
@@ -119,3 +80,70 @@ class MLP_Regressor(nn.Module):
             hinge += torch.nn.functional.binary_cross_entropy(pred, y.view(-1,1))
 
         return hinge
+
+class MLP_Regressor(BaseRegressor):
+    def __init__(self, block_size=10, *args, **kwargs):
+
+        def _make_layer(h_dim):
+            return nn.Sequential(
+                    nn.Linear(h_dim, h_dim),
+                    nn.ReLU(),
+                    nn.Linear(h_dim, h_dim),
+                    )
+
+        super().__init__()
+        self.layer0 = _make_layer(785*block_size)
+        self.layer1 = _make_layer(101*block_size)
+        self.layer2 = _make_layer(101)
+
+        self.block_size = block_size
+
+        self.layers = [self.layer0,
+                self.layer1,
+                self.layer2,
+                ]
+
+    def forward(self, x):
+        def _layer_forward(layer, x):
+            batch, hidden_dim, input_dim = x.size()
+
+            block_size = 1 if hidden_dim == 1 else self.block_size
+            
+            assert hidden_dim % block_size == 0, "hidden_dim({}) is not a multiple of block_size ({})".format(hidden_dim, block_size)
+
+            num_blocks = hidden_dim // block_size # number of blocks to concat to get right out size
+            reshaped = x.view(batch, num_blocks, block_size*input_dim)
+            reshaped = reshaped.transpose(0,1) # get batch in there
+
+            out = []
+
+            for i in range(num_blocks):
+                regressed = layer(reshaped[i,:,:].contiguous().view(batch, -1))
+                regressed = regressed.view(batch, block_size, input_dim)
+                out.append(regressed)
+
+            return torch.cat(out, dim=1)
+
+        return [_layer_forward(self.layers[i], l) for i, l in enumerate(x)]
+
+
+
+
+class ConvRegressor(BaseRegressor):
+    
+    def __init__(self, *args, **kwargs):
+
+        super().__init__()
+
+        self.layer_1 = nn.Conv1d(100, 100, 1)
+        self.layer_2 = nn.Conv1d(100, 100, 1)
+        self.layer_3 = nn.Sequential(
+                nn.Linear(101,101),
+                nn.ReLU(),
+                nn.Linear(101,101),
+                )
+
+        self.layers = [self.layer_1, self.layer_2, self.layer_3]
+
+    def forward(self, x):
+        return [self.layers[i](l) for i, l in enumerate(x)]
