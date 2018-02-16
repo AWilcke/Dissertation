@@ -79,7 +79,7 @@ def check_performance(net, val_dataloader, writer, args, global_step):
 
         for b in range(regressed_val[0].size(0)):
             mnist = MNISTbyClass(args.mnist, args.index, int(val_sample['label'][b]), 800, train_labels=False, train_split=False)
-            loader = DataLoader(mnist, batch_size=256, num_workers=0)
+            loader = DataLoader(mnist, batch_size=200, num_workers=0)
             n = val_sample['train'][b][1].size(0) // 2
 
 
