@@ -41,7 +41,7 @@ def train(args):
         n_gpu = 0
     
     
-    net = model_dict[args.net](n_gpu=n_gpu)
+    net = model_dict[args.net](n_gpu=n_gpu, filter_size=args.filter_size)
     print(net)
 
     start_epoch = 0
@@ -193,6 +193,8 @@ if __name__ == "__main__":
     parser.add_argument('--net',type=str, default='mlp_reg')
     parser.add_argument('--dropout', type=float, default=0,
             help='dropout probability for regressor')
+    parser.add_argument('--filter_size', type=int, default=1,
+            help='filter size for conv regressor, must be odd')
 
     # training args
     parser.add_argument('--optimiser', type=str, default='sgd')

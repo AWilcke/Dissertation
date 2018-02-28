@@ -131,12 +131,16 @@ class MLP_Regressor(BaseRegressor):
 
 class ConvRegressor(BaseRegressor):
     
-    def __init__(self, *args, **kwargs):
+    def __init__(self, filter_size=1, *args, **kwargs):
 
         super().__init__()
+        
+        assert filter_size % 2 != 0, "Filter size must be odd to ensure size remains same"
 
-        self.layer_1 = nn.Conv1d(100, 100, 1)
-        self.layer_2 = nn.Conv1d(100, 100, 1)
+        padding = filter_size // 2
+
+        self.layer_1 = nn.Conv1d(100, 100, filter_size, padding=padding)
+        self.layer_2 = nn.Conv1d(100, 100, filter_size, padding=padding)
         self.layer_3 = nn.Sequential(
                 nn.Linear(101,101),
                 nn.ReLU(),
