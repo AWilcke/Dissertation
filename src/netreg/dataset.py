@@ -9,18 +9,16 @@ from torch.utils.data.dataloader import default_collate
 
 class MNISTbyClass(Dataset):
 
-    def __init__(self, root, index, label, n, train_labels=True, train_split=True):
+    def __init__(self, root, index, label, n, relevant_labels, train_split=True):
         """
         Args:
             root (string) : path to folder where the "processed" folder is stored
             index (string) : path to "index.pickle" file
             label (int) : which label is the postive sample
             n (int) : number of images to sample
-            train_labels (bool) : train or validation label set
+            relevant_labels (bool) : train or validation label set
             train_split (bool) : train or validation data split
         """
-
-        relevant_labels = range(2,10) if train_labels else range(2)
 
         with open(index, 'rb') as f:
             index = pickle.load(f)[train_split]

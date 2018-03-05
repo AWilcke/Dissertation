@@ -19,6 +19,27 @@ class MLP_100(nn.Module):
         y = self.main(x)
         return y
 
+class ConvNet(nn.Module):
+    def __init__(self, *args, **kwargs):
+        self.conv = nn.Sequential(
+                nn.Conv2d(3, 5, 5),
+                nn.MaxPool2d(2),
+                nn.ReLU(),
+                nn.Conv2d(5, 10, 5),
+                nn.MaxPool2d(2),
+                nn.ReLU(),
+                )
+        self.fc = nn.Sequential(
+                nn.Linear(160, 16),
+                nn.ReLU(),
+                nn.Linear(16,1),
+                )
+    def forward(self, x):
+        y1 = self.conv(x)
+        flat = y1.view(y1.size(0), -1)
+        return self.fc(flat)
+
+
 class BaseRegressor(nn.Module):
     def __init__(self):
         super().__init__()

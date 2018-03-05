@@ -16,11 +16,20 @@ NUM_EPOCHS = 50
 
 parser = ArgumentParser()
 
+# arguments for CLI use
 parser.add_argument('--val_interval', type=int, default=1,
        help='Epoch interval for validation cycle')
 parser.add_argument('--patience', type=int, default=10,
        help='Patience for early stopping')
+parser.add_argument('--logging', action='store_true')
+parser.add_argument('--val_labels', nargs='+', type=int,
+        help='Which labels to use as validation', default=[0,1])
+parser.add_argument('--w1', action='store_true')
+parser.add_argument('--root', type=str, 
+        help='Root folder of where to store data',
+        default='data/mnist')
 
+# arguments for script use
 parser.add_argument('--lr', type=float, default=0.001,
        help='Learning rate')
 parser.add_argument('--optim',
@@ -32,16 +41,13 @@ parser.add_argument('--betas', nargs='+', type=float,
        default=[0.9, 0.999])
 parser.add_argument('--weight_decay', type=float,
        default=0.)
-
 parser.add_argument('-n', type=int)
-parser.add_argument('--val', action='store_false')
 parser.add_argument('--label', type=int)
-
+parser.add_argument('--labels', nargs='+', type=int,
+        help='labels relevant to the split')
 parser.add_argument('--output', type=str, default='/dev/null',
        help='Where to save the model to')
-parser.add_argument('--logging', action='store_true')
 
-parser.add_argument('--w1', action='store_true')
 
 def main(args, logging=True):
 
@@ -50,9 +56,9 @@ def main(args, logging=True):
         BATCH_SIZE = 256
         args.n = 5000
 
-    data = MNISTbyClass('data/mnist','data/mnist/index.pickle', args.label, args.n, args.val, True)
+    data = MNISTbyClass('data/mnist','data/mnist/index.pickle', args.label, args.n, args.labels, True)
 
-    val = MNISTbyClass('data/mnist','data/mnist/index.pickle', args.label, 800, args.val, False)
+    val = MNISTbyClass('data/mnist','data/mnist/index.pickle', args.label, 800, args.labels, False)
 
     loader = DataLoader(data, batch_size=BATCH_SIZE,
             shuffle=True, num_workers=0, drop_last=True)
@@ -183,32 +189,35 @@ if __name__ == '__main__':
             'rms'
             ]
 
-    ns = [5000]
+    ns = [5]
     lrs = [1e-3]
     wds = [1e-3]
-    labels = range(10)
-    # labels = range(2,10)
-    # labels = [0,1]
 
-    split = 'train' if parser.parse_args().val else 'val'
-    stage = 'w1' if parser.parse_args().w1 else 'w0'
+    labels = range(10)
+    
+    args = parser.parse_args()
+
+    stage = 'w1' if args.w1 else 'w0'
+    root = Path(args.root)
 
     for label in labels:
         count = 0
 
-        # split = 'val' if label in {0,1} else 'train' #hacky overwriting
+        split = 'val' if label in args.val_labels else 'train'
+        relevant_labels = args.val_labels if split == 'val' \
+                else list(set(labels) - set(args.val_labels))
 
         for optim, n, lr, wd in itertools.product(optims, ns, lrs, wds):
             # format
             name = '{}_{}'.format(label, count)
-            parent_d = Path('data/mnist') / stage / split / str(label)
+            parent_d = root / stage / split / str(label)
             parent_d.mkdir(parents=True, exist_ok=True)
 
             output = parent_d / name
 
             if not os.path.exists(output):
-                arg_str = '--optim {} -n {} --lr {} --weight_decay {} --label {} --output {} '\
-                        .format(optim, n, lr, wd, label, output)
+                arg_str = '--optim {} -n {} --lr {} --weight_decay {} --label {} --output {} --labels {} '\
+                        .format(optim, n, lr, wd, label, output, ' '.join(map(str, relevant_labels)))
 
                 # pass in cli args too
                 if len(sys.argv) > 1:
@@ -221,7 +230,3 @@ if __name__ == '__main__':
                 main(args)
 
             count += 1
-
-    # args = parser.parse_args()
-
-    # main(args, False)
