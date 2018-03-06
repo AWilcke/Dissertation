@@ -42,6 +42,8 @@ def dropout_train(m):
         m.train()
 
 def dict_to_tensor_list(state_dict):
+    # returns conv as Nout * (Nin*(f*f+b))
+    # TODO might want to transpose Ns?
 
     layers = []
     seen = set()
@@ -51,10 +53,16 @@ def dict_to_tensor_list(state_dict):
             seen.add(name)
             layers.append(name)
 
+    print(layers)
     del seen
-    return [torch.cat(
-        [state_dict["{}.weight".format(x)], state_dict["{}.bias".format(x)]], dim=1) \
-                for x in layers]
+
+    out = []
+    for x in layers:
+        weights = state_dict[f"{x}.weight"]
+        bias = state_dict[f"{x}.bias"]
+        out.append(torch.cat([weights.view(weights.size(0), -1), bias], dim=1))
+
+    return out
 
 def copy_tensor_list_to_net(tensor_list, net):
 

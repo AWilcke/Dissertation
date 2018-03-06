@@ -21,6 +21,7 @@ class MLP_100(nn.Module):
 
 class ConvNet(nn.Module):
     def __init__(self, *args, **kwargs):
+        super().__init__()
         self.conv = nn.Sequential(
                 nn.Conv2d(3, 5, 5),
                 nn.MaxPool2d(2),
@@ -172,3 +173,41 @@ class ConvRegressor(BaseRegressor):
 
     def forward(self, x):
         return [self.layers[i](l) for i, l in enumerate(x)]
+
+class ConvNetRegressor(BaseRegressor):
+    
+    def __init__(self, *args, **kwargs):
+
+        super().__init__()
+
+        def _make_layer(h_dim):
+            return nn.Sequential(
+                    nn.Linear(h_dim, h_dim),
+                    nn.ReLU(),
+                    nn.Linear(h_dim, h_dim),
+                    )
+        
+        self.layer_1 = _make_layer(5*76)
+        self.layer_2 = _make_layer(10*126)
+        self.layer_3 = _make_layer(16*161)
+        self.layer_4 = _make_layer(1*17)
+
+        self.layers = [self.layer_1,
+                self.layer_2,
+                self.layer_3,
+                self.layer_4]
+
+    def forward(self, x):
+        out = []
+        for i, weights in enumerate(x):
+            reshape = weights.view(weights.size(0), -1)
+            regress = self.layers[i](reshape)
+            out.append(regress.view_as(weights))
+        return out
+    
+    def fprop(self, l, ipt, b):
+        """
+        Forward propagate through the regressed layers, using input ipt and b-th network from l
+        """
+        # TODO implement conv fprop
+        pass
