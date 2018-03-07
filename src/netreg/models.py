@@ -1,6 +1,7 @@
 import torch.nn as nn
 from torch.autograd import Variable
 import torch
+from torch.nn import functional as F
 
 class MLP_100(nn.Module):
 
@@ -209,5 +210,24 @@ class ConvNetRegressor(BaseRegressor):
         """
         Forward propagate through the regressed layers, using input ipt and b-th network from l
         """
-        # TODO implement conv fprop
-        pass
+
+        # run through convs
+        for layer in range(2):
+            weights = l[layer]['weight'][b].contiguous()
+            weights = weights.view(weights.size(0), -1, 5, 5) # we only have 5 filter size
+            ipt = F.conv2d(ipt, weights, l[layer]['bias'][b])
+            ipt = F.max_pool2d(ipt, 2)
+            ipt = nn.functional.relu(ipt)
+
+        # flatten
+        ipt = ipt.view(ipt.size(0), -1)
+
+        # run through fc
+        ipt = torch.matmul(ipt, l[2]['weight'][b].transpose(0,1)) + l[2]['bias'][b]
+        ipt = nn.functional.relu(ipt)
+
+        # last layer + sigmoid for prob
+        pred = torch.matmul(ipt, l[-1]['weight'][b].transpose(0,1)) + l[-1]['bias'][b]
+        pred = nn.functional.sigmoid(pred)
+
+        return pred

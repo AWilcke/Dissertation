@@ -3,7 +3,7 @@ import torch.optim as optim
 from torch.autograd import Variable
 from dataset import MLP_Dataset
 from torch.utils.data import DataLoader
-from models import MLP_100, MLP_Regressor, ConvRegressor
+from models import MLP_100, MLP_Regressor, ConvRegressor, ConvNet, ConvNetRegressor
 from utils import collate_fn
 import argparse
 from tensorboardX import SummaryWriter
@@ -15,8 +15,10 @@ NUM_EPOCHS = 100
 
 model_dict = {
         'mlp_100': MLP_100,
+        'conv_net': ConvNet,
         'mlp_reg': MLP_Regressor,
         'conv_reg': ConvRegressor,
+        'convnet_reg': ConvNetRegressor,
         }
 
 def train(args):
