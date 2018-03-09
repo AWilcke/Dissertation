@@ -24,7 +24,7 @@ class ConvNet(nn.Module):
     def __init__(self, *args, **kwargs):
         super().__init__()
         self.conv = nn.Sequential(
-                nn.Conv2d(3, 5, 5),
+                nn.Conv2d(1, 5, 5),
                 nn.MaxPool2d(2),
                 nn.ReLU(),
                 nn.Conv2d(5, 10, 5),
@@ -35,9 +35,11 @@ class ConvNet(nn.Module):
                 nn.Linear(160, 16),
                 nn.ReLU(),
                 nn.Linear(16,1),
+                nn.Sigmoid()
                 )
     def forward(self, x):
-        y1 = self.conv(x)
+        reshape = x.view(-1, 1, 28, 28)
+        y1 = self.conv(reshape)
         flat = y1.view(y1.size(0), -1)
         return self.fc(flat)
 
@@ -188,7 +190,7 @@ class ConvNetRegressor(BaseRegressor):
                     nn.Linear(h_dim, h_dim),
                     )
         
-        self.layer_1 = _make_layer(5*76)
+        self.layer_1 = _make_layer(5*26)
         self.layer_2 = _make_layer(10*126)
         self.layer_3 = _make_layer(16*161)
         self.layer_4 = _make_layer(1*17)
@@ -210,6 +212,8 @@ class ConvNetRegressor(BaseRegressor):
         """
         Forward propagate through the regressed layers, using input ipt and b-th network from l
         """
+
+        ipt = ipt.view(-1, 1, 28, 28)
 
         # run through convs
         for layer in range(2):

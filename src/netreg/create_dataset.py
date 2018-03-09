@@ -9,6 +9,12 @@ import os
 import pickle
 import sys
 from pathlib import Path
+from models import MLP_100, ConvNet
+
+model_dict = {
+        'mlp': MLP_100,
+        'conv': ConvNet,
+        }
 
 BATCH_SIZE = 2
 VAL_BATCH = 200
@@ -16,11 +22,12 @@ NUM_EPOCHS = 50
 
 parser = ArgumentParser()
 
+
 # arguments for CLI use
-parser.add_argument('--val_interval', type=int, default=1,
-       help='Epoch interval for validation cycle')
-parser.add_argument('--patience', type=int, default=10,
-       help='Patience for early stopping')
+parser.add_argument('--model', choices=model_dict.keys(),
+        help='Which model to create dataset with')
+parser.add_argument('--emnist', action='store_true',
+        help='Which dataset to train the models on')
 parser.add_argument('--logging', action='store_true')
 parser.add_argument('--val_labels', nargs='+', type=int,
         help='Which labels to use as validation', default=[0,1])
@@ -28,6 +35,16 @@ parser.add_argument('--w1', action='store_true')
 parser.add_argument('--root', type=str, 
         help='Root folder of where to store data',
         default='data/mnist')
+parser.add_argument('--data', type=str,
+        help='Where the dataset is stored',
+        default='data/mnist')
+
+parser.add_argument('--val_interval', type=int, default=1,
+       help='Epoch interval for validation cycle')
+parser.add_argument('--patience', type=int, default=10,
+       help='Patience for early stopping')
+parser.add_argument('--min_epoch', type=int, default=20,
+        help='Minimum number of epochs to train for')
 
 # arguments for script use
 parser.add_argument('--lr', type=float, default=0.001,
@@ -54,18 +71,22 @@ def main(args, logging=True):
     if args.w1:
         global BATCH_SIZE
         BATCH_SIZE = 256
-        args.n = 5000
+        args.n = 2400
 
-    data = MNISTbyClass('data/mnist','data/mnist/index.pickle', args.label, args.n, args.labels, True)
+    data_path = Path(args.data)
 
-    val = MNISTbyClass('data/mnist','data/mnist/index.pickle', args.label, 800, args.labels, False)
+    data = MNISTbyClass(data_path, data_path / 'index.pickle', args.label, 
+            args.n, args.labels, True, extended=args.emnist)
+
+    val = MNISTbyClass(data_path, data_path / 'index.pickle', args.label, 
+            400, args.labels, False, extended=args.emnist)
 
     loader = DataLoader(data, batch_size=BATCH_SIZE,
             shuffle=True, num_workers=0, drop_last=True)
     val_loader = DataLoader(val, batch_size=VAL_BATCH,
             shuffle=True, num_workers=0, drop_last=True)
 
-    net = MLP_100()
+    net = model_dict[args.model]()
 
     if args.optim == 'sgd':
         optimizer = torch.optim.SGD(net.parameters(), lr=args.lr, 
@@ -157,7 +178,7 @@ def main(args, logging=True):
         # check if should early stop
         max_epoch, _ = max_val
 
-        if epoch - max_epoch > args.patience * args.val_interval:
+        if epoch - max_epoch > args.patience * args.val_interval and epoch>args.min_epoch:
             if args.logging:
                 print("No progress in {} epochs, stopping training."
                         .format(args.patience * args.val_interval))
@@ -173,15 +194,16 @@ def main(args, logging=True):
         pickle.dump(out,f)
 
 if __name__ == '__main__':
+    args = parser.parse_args()
 
     # optims = [
-            # 'sgd --momentum 0',
-            # 'sgd --momentum 0.5',
+            # # 'sgd --momentum 0',
+            # # 'sgd --momentum 0.5',
             # 'sgd --momentum 0.9',
             # 'adam',
             # 'rms'
             # ]
-    # ns = range(1, 51)
+
     # lrs = [1e-2, 1e-3]
     # wds = [0, 1e-3]
 
@@ -189,15 +211,16 @@ if __name__ == '__main__':
             'rms'
             ]
 
-    ns = [5]
     lrs = [1e-3]
     wds = [1e-3]
 
-    labels = range(10)
+    ns = [2400] if args.w1 else range(1,21)
+
+    labels = range(47) if args.emnist else range(10)
     
-    args = parser.parse_args()
 
     stage = 'w1' if args.w1 else 'w0'
+
     root = Path(args.root)
 
     for label in labels:

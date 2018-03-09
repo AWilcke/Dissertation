@@ -1,5 +1,5 @@
 from torchvision import transforms as T
-import torchvision
+from mnist import MNIST, EMNIST
 from torch.utils.data import Dataset
 import pickle
 import numpy as np
@@ -9,7 +9,7 @@ from torch.utils.data.dataloader import default_collate
 
 class MNISTbyClass(Dataset):
 
-    def __init__(self, root, index, label, n, relevant_labels, train_split=True):
+    def __init__(self, root, index, label, n, relevant_labels, train_split=True, extended=False):
         """
         Args:
             root (string) : path to folder where the "processed" folder is stored
@@ -18,17 +18,24 @@ class MNISTbyClass(Dataset):
             n (int) : number of images to sample
             relevant_labels (bool) : train or validation label set
             train_split (bool) : train or validation data split
+            extended (bool) : EMNIST or MNIST
         """
 
         with open(index, 'rb') as f:
             index = pickle.load(f)[train_split]
-
-        self.data = torchvision.datasets.MNIST(root, train=train_split, download=True,
-                transform=T.Compose([
+        
+        trans = T.Compose([
                     T.ToTensor(),
                     T.Lambda(lambda t : t.view(-1))
                     ])
-                )
+
+        if extended:
+            self.data = EMNIST(root, split='balanced', 
+                    train=train_split, download=False,
+                    transform=trans)
+        else:
+            self.data = MNIST(root, train=train_split, download=False,
+                    transform=trans)
 
         # get indices of other nums
         false = []
@@ -52,7 +59,7 @@ class MNISTbyClass(Dataset):
 
 class MLP_Dataset(Dataset):
 
-    def __init__(self, w0, w1, mnist, train=True):
+    def __init__(self, w0, w1, mnist, train=True, extended=False):
 
         split = 'train' if train else 'val'
         p = Path(w0) / split
@@ -62,13 +69,19 @@ class MLP_Dataset(Dataset):
 
         self.w1 = Path(w1) / split
 
-        self.data = torchvision.datasets.MNIST(mnist, train=True, download=True,
-                transform=T.Compose([
+        trans = T.Compose([
                     T.ToTensor(),
                     T.Lambda(lambda t : t.view(-1))
                     ])
-                )
-    
+
+        if extended:
+            self.data = EMNIST(mnist, split='balanced', 
+                    train=True, download=False,
+                    transform=trans)
+        else:
+            self.data = MNIST(mnist, train=True, download=False,
+                    transform=trans)
+
     def __len__(self):
         return len(self.file_list)
 

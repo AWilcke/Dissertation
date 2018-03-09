@@ -53,14 +53,13 @@ def dict_to_tensor_list(state_dict):
             seen.add(name)
             layers.append(name)
 
-    print(layers)
     del seen
 
     out = []
     for x in layers:
         weights = state_dict[f"{x}.weight"]
         bias = state_dict[f"{x}.bias"]
-        out.append(torch.cat([weights.view(weights.size(0), -1), bias], dim=1))
+        out.append(torch.cat([weights.view(weights.size(0), -1), bias.view(-1, 1)], dim=1))
 
     return out
 

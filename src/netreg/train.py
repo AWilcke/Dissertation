@@ -9,6 +9,7 @@ import argparse
 from tensorboardX import SummaryWriter
 import os
 import scoring
+from tqdm import tqdm
 
 BATCH_SIZE = 64 # do not set to 1, as BatchNorm won't work
 NUM_EPOCHS = 100
@@ -23,12 +24,14 @@ model_dict = {
 
 def train(args):
     # training datasets
-    dataset = MLP_Dataset(args.w0, args.w1, args.mnist, train=True)
+    dataset = MLP_Dataset(args.w0, args.w1, args.mnist, train=True, extended=args.extended)
+    print(f"Train: {len(dataset)}")
     dataloader = DataLoader(dataset, batch_size=BATCH_SIZE,
             shuffle=True, num_workers=0, collate_fn=collate_fn)
 
     # validation datasets
-    val_dataset = MLP_Dataset(args.w0, args.w1, args.mnist, train=False)
+    val_dataset = MLP_Dataset(args.w0, args.w1, args.mnist, train=False, extended=args.extended)
+    print(f"Val: {len(val_dataset)}")
     val_dataloader = DataLoader(val_dataset, batch_size=BATCH_SIZE,
             shuffle=False, num_workers=0, collate_fn=collate_fn)
 
@@ -92,9 +95,9 @@ def train(args):
     w0 = [Variable(x) for x in w0]
     w1 = [Variable(x) for x in w1]
 
-    for epoch in range(start_epoch, NUM_EPOCHS):
+    for epoch in tqdm(range(start_epoch, NUM_EPOCHS)):
 
-        for b, samples in enumerate(dataloader):
+        for b, samples in enumerate(tqdm(dataloader)):
             
             global_step = epoch*len(dataloader) + b
 
@@ -116,7 +119,10 @@ def train(args):
                 train = [t.cuda() for t in train]
                 labels = [l.cuda() for l in labels]
 
-            regressed_w = net(w0) # regressed_w[-1] is the intercept
+            try:
+                regressed_w = net(w0) # regressed_w[-1] is the intercept
+            except:
+                print(w0)
 
             optimizer.zero_grad()
             
@@ -186,6 +192,9 @@ if __name__ == "__main__":
     parser.add_argument('-w0')
     parser.add_argument('-w1')
     parser.add_argument('--mnist')
+    parser.add_argument('--extended', action='store_true')
+    parser.add_argument('--val_labels', nargs='+', type=int,
+            help='Which labels to use as validation')
     parser.add_argument('--index')
     parser.add_argument('-r','--runs', dest='r')
     parser.add_argument('--ckpt')
