@@ -129,7 +129,6 @@ def train(args):
             
             l2_loss = net.l2_loss(regressed_w, w1)
             hinge_loss = net.perf_loss(regressed_w, train, labels)
-            # hinge_loss = Variable(torch.FloatTensor([0.])).cuda()
 
             log_dic['l2'] += l2_loss.data[0]
             log_dic['hinge'] += hinge_loss.data[0]

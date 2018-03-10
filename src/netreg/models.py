@@ -187,7 +187,9 @@ class ConvNetRegressor(BaseRegressor):
         def _make_layer(h_dim):
             return nn.Sequential(
                     nn.Linear(h_dim, h_dim),
-                    nn.ReLU(),
+                    # nn.ReLU(),
+                    # nn.Tanh(),
+                    nn.LeakyReLU(negative_slope=0.1),
                     nn.Linear(h_dim, h_dim),
                     )
         

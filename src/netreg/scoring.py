@@ -61,8 +61,8 @@ def check_performance(net, val_dataloader, writer, args, global_step):
     net.eval()
     net.apply(dropout_train)
 
-    correct = defaultdict(int)
-    total = defaultdict(int)
+    correct = defaultdict(float)
+    total = defaultdict(float)
 
     for val_sample in val_dataloader:
 
@@ -77,11 +77,17 @@ def check_performance(net, val_dataloader, writer, args, global_step):
 
 
         for b in range(regressed_val[0].size(0)):
+
+            cur_lab = int(val_sample['label'][b])
+
+            assert cur_lab in args.val_labels, f"{cur_lab} is not a validation label : {args.val_labels}"
+
             mnist = MNISTbyClass(args.mnist, args.index, 
-                    int(val_sample['label'][b]), 400, 
+                    cur_lab, 400, 
                     relevant_labels=args.val_labels, train_split=False,
                     extended=args.extended)
             loader = DataLoader(mnist, batch_size=200, num_workers=0)
+
             n = val_sample['train'][b][1].size(0) // 2
 
 
@@ -94,15 +100,15 @@ def check_performance(net, val_dataloader, writer, args, global_step):
                     labels = labels.cuda()
 
                 out = net.fprop(l, ipt, b)
-                pred = (out.data > 0.5).float()
+                pred = (out.data > 0.5).long()
 
                 assert labels.size(0) == pred.size(0)
 
-                correct[n] += (pred==labels.float()).sum()
-                total[n] += labels.size(0)
+                acc = (pred==labels).sum() / labels.size(0)
+                correct[n] += acc
+                total[n] += 1
 
-    accuracies = [correct[n]/total[n] for num in sorted(correct.keys())]
-    # print(accuracies)
+    accuracies = [correct[num]/total[num] for num in sorted(correct.keys())]
     im = make_graph_image(np.arange(1,len(accuracies)+1), accuracies)
     latex = ''.join(['({:.0f},{:.4f})'.format(n+1, acc) for n, acc in enumerate(accuracies)])
 

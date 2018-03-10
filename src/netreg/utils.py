@@ -8,7 +8,6 @@ def weight_init(m):
 
     classname = m.__class__.__name__
     if classname.find('Linear') != -1:
-        print(classname)
         dim = m.weight.data.size(0)
         m.weight.data.copy_(torch.eye(dim))
         m.bias.data.fill_(0)
