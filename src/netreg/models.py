@@ -102,6 +102,7 @@ class BaseRegressor(nn.Module):
             ipt = train[b]
             y = labels[b]
             pred = self.fprop(l, ipt, b)
+            # print(pred)
             hinge += torch.nn.functional.binary_cross_entropy(pred, y.view(-1,1))
 
         return hinge

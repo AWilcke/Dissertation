@@ -4,7 +4,7 @@ from torch.autograd import Variable
 from dataset import MLP_Dataset
 from torch.utils.data import DataLoader
 from models import MLP_100, MLP_Regressor, ConvRegressor, ConvNet, ConvNetRegressor
-from utils import collate_fn
+from utils import collate_fn, weight_init
 import argparse
 from tensorboardX import SummaryWriter
 import os
@@ -48,6 +48,7 @@ def train(args):
     
     net = model_dict[args.net](n_gpu=n_gpu, filter_size=args.filter_size)
     print(net)
+    net.apply(weight_init)
 
     start_epoch = 0
 
@@ -128,6 +129,7 @@ def train(args):
             
             l2_loss = net.l2_loss(regressed_w, w1)
             hinge_loss = net.perf_loss(regressed_w, train, labels)
+            # hinge_loss = Variable(torch.FloatTensor([0.])).cuda()
 
             log_dic['l2'] += l2_loss.data[0]
             log_dic['hinge'] += hinge_loss.data[0]

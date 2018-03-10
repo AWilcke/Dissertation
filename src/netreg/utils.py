@@ -4,6 +4,15 @@ from torchvision import transforms
 import torch
 from torch.utils.data.dataloader import default_collate
 
+def weight_init(m):
+
+    classname = m.__class__.__name__
+    if classname.find('Linear') != -1:
+        print(classname)
+        dim = m.weight.data.size(0)
+        m.weight.data.copy_(torch.eye(dim))
+        m.bias.data.fill_(0)
+
 def make_graph_image(x, y):
     plt.switch_backend('agg')
     fig = plt.figure()
