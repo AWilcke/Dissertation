@@ -13,6 +13,16 @@ def id_init(m):
         m.weight.data.copy_(torch.eye(dim))
         m.bias.data.fill_(0)
 
+def id_normal_init(m):
+
+    classname = m.__class__.__name__
+    if classname.find('Linear') != -1:
+        w = m.weight.data
+        dim = w.size(0)
+        w.normal_(0,0.02)
+        w.add_(torch.eye(dim))
+        m.bias.data.fill_(0)
+
 def xavier_init(m):
     classname = m.__class__.__name__
     if classname.find('Linear') != -1:

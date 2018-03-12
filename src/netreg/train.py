@@ -4,7 +4,7 @@ from torch.autograd import Variable
 from dataset import MLP_Dataset
 from torch.utils.data import DataLoader
 from models import MLP_100, MLP_Regressor, ConvRegressor, ConvNet, ConvNetRegressor
-from utils import collate_fn, id_init, xavier_init
+from utils import collate_fn, id_init, xavier_init, id_normal_init
 import argparse
 from tensorboardX import SummaryWriter
 import os
@@ -20,6 +20,12 @@ model_dict = {
         'mlp_reg': MLP_Regressor,
         'conv_reg': ConvRegressor,
         'convnet_reg': ConvNetRegressor,
+        }
+
+init_dict = {
+        'id': id_init,
+        'id_normal': id_normal_init,
+        'xavier': xavier_init,
         }
 
 def train(args):
@@ -48,8 +54,7 @@ def train(args):
     
     net = model_dict[args.net](n_gpu=n_gpu, filter_size=args.filter_size)
     print(net)
-    # net.apply(weight_init) # identity init
-    net.apply(xavier_init)
+    net.apply(init_dict[args.weight_init])
 
     start_epoch = 0
 
@@ -204,8 +209,8 @@ if __name__ == "__main__":
 
     # architecture args
     parser.add_argument('--net',type=str, default='mlp_reg')
-    parser.add_argument('--dropout', type=float, default=0,
-            help='dropout probability for regressor')
+    parser.add_argument('--weight_init', choices=init_dict.keys(), 
+            default='id')
     parser.add_argument('--filter_size', type=int, default=1,
             help='filter size for conv regressor, must be odd')
 
