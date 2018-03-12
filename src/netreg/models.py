@@ -184,22 +184,22 @@ class ConvNetRegressor(BaseRegressor):
 
         super().__init__()
 
-        def _make_layer(h_dim):
-            return nn.Sequential(
-                    nn.Linear(h_dim, h_dim),
-                    nn.LeakyReLU(negative_slope=0.1),
-                    nn.Linear(h_dim, h_dim),
-                    )
-        
-        self.layer_1 = _make_layer(5*26)
-        self.layer_2 = _make_layer(10*126)
-        self.layer_3 = _make_layer(16*161)
-        self.layer_4 = _make_layer(1*17)
+        self.layer_1 = self._make_layer(5*26)
+        self.layer_2 = self._make_layer(10*126)
+        self.layer_3 = self._make_layer(16*161)
+        self.layer_4 = self._make_layer(1*17)
 
         self.layers = [self.layer_1,
                 self.layer_2,
                 self.layer_3,
                 self.layer_4]
+
+    def _make_layer(self, h_dim):
+        return nn.Sequential(
+                nn.Linear(h_dim, h_dim),
+                nn.LeakyReLU(negative_slope=0.1),
+                nn.Linear(h_dim, h_dim),
+                )
 
     def forward(self, x):
         out = []
@@ -236,3 +236,23 @@ class ConvNetRegressor(BaseRegressor):
         pred = nn.functional.sigmoid(pred)
 
         return pred
+
+class LargeConvNetRegressor(ConvNetRegressor):
+
+    def __init__(self, *args, **kwargs):
+        super().__init__()
+
+    def _make_layer(self, input_dim):
+
+        h1 = int(1.5*input_dim)
+        h2 = int(1.25*input_dim)
+
+        return nn.Sequential(
+                nn.Linear(input_dim, h1),
+                nn.LeakyReLU(negative_slope=0.1),
+                nn.Linear(h1, h2),
+                nn.LeakyReLU(negative_slope=0.1),
+                nn.Linear(h2, input_dim),
+                nn.LeakyReLU(negative_slope=0.1),
+                nn.Linear(input_dim, input_dim),
+                )

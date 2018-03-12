@@ -54,7 +54,11 @@ def train(args):
     
     net = model_dict[args.net](n_gpu=n_gpu, filter_size=args.filter_size)
     print(net)
-    net.apply(init_dict[args.weight_init])
+
+    # layer-wise init - needed for non-square identity init
+    for layer in net.layers:
+        dim = layer.state_dict()['0.weight'].size(1) # input size of layer
+        layer.apply(lambda m : init_dict[args.weight_init](m, dim=dim))
 
     start_epoch = 0
 
