@@ -4,7 +4,7 @@ from torch.autograd import Variable
 from dataset import MLP_Dataset
 from torch.utils.data import DataLoader
 from models import MLP_100, MLP_Regressor, ConvRegressor, ConvNet, ConvNetRegressor
-from utils import collate_fn, weight_init
+from utils import collate_fn, id_init, xavier_init
 import argparse
 from tensorboardX import SummaryWriter
 import os
@@ -48,7 +48,8 @@ def train(args):
     
     net = model_dict[args.net](n_gpu=n_gpu, filter_size=args.filter_size)
     print(net)
-    net.apply(weight_init)
+    # net.apply(weight_init) # identity init
+    net.apply(xavier_init)
 
     start_epoch = 0
 

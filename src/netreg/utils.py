@@ -3,13 +3,21 @@ import numpy as np
 from torchvision import transforms
 import torch
 from torch.utils.data.dataloader import default_collate
+from torch import nn
 
-def weight_init(m):
+def id_init(m):
 
     classname = m.__class__.__name__
     if classname.find('Linear') != -1:
         dim = m.weight.data.size(0)
         m.weight.data.copy_(torch.eye(dim))
+        m.bias.data.fill_(0)
+
+def xavier_init(m):
+    classname = m.__class__.__name__
+    if classname.find('Linear') != -1:
+        xavier = nn.init.xavier_normal(m.weight.data)
+        m.weight.data.copy_(xavier)
         m.bias.data.fill_(0)
 
 def make_graph_image(x, y):
