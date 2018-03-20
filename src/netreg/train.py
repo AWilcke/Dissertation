@@ -3,7 +3,7 @@ import torch.optim as optim
 from torch.autograd import Variable
 from dataset import MLP_Dataset
 from torch.utils.data import DataLoader
-from models import MLP_100, MLP_Regressor, ConvRegressor, ConvNet, ConvNetRegressor
+from models import MLP_100, MLP_Regressor, ConvRegressor, ConvNet, ConvNetRegressor, LargeConvNetRegressor
 from utils import collate_fn, id_init, xavier_init, id_normal_init
 import argparse
 from tensorboardX import SummaryWriter
@@ -12,7 +12,7 @@ import scoring
 from tqdm import tqdm
 
 BATCH_SIZE = 64 # do not set to 1, as BatchNorm won't work
-NUM_EPOCHS = 100
+NUM_EPOCHS = 500
 
 model_dict = {
         'mlp_100': MLP_100,
@@ -20,6 +20,7 @@ model_dict = {
         'mlp_reg': MLP_Regressor,
         'conv_reg': ConvRegressor,
         'convnet_reg': ConvNetRegressor,
+        'convnet_reg_lg': LargeConvNetRegressor,
         }
 
 init_dict = {

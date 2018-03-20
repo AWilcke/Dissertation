@@ -10,6 +10,7 @@ import pickle
 import sys
 from pathlib import Path
 from models import MLP_100, ConvNet
+from tqdm import tqdm
 
 model_dict = {
         'mlp': MLP_100,
@@ -196,23 +197,26 @@ def main(args, logging=True):
 if __name__ == '__main__':
     args = parser.parse_args()
 
-    # optims = [
-            # # 'sgd --momentum 0',
-            # # 'sgd --momentum 0.5',
-            # 'sgd --momentum 0.9',
-            # 'adam',
-            # 'rms'
-            # ]
 
-    # lrs = [1e-2, 1e-3]
-    # wds = [0, 1e-3]
+    if args.w1:
+        optims = [
+                'rms'
+                ]
 
-    optims = [
-            'rms'
-            ]
+        lrs = [1e-3]
+        wds = [1e-3]
+        n_samples = 1
 
-    lrs = [1e-3]
-    wds = [1e-3]
+    else:
+        optims = [
+                'sgd --momentum 0.9',
+                'adam',
+                'rms'
+                ]
+
+        lrs = [1e-2, 1e-3]
+        wds = [0, 1e-3]
+        n_samples = 3
 
     ns = [2400] if args.w1 else range(1,21)
 
@@ -223,14 +227,14 @@ if __name__ == '__main__':
 
     root = Path(args.root)
 
-    for label in labels:
+    for label in tqdm(labels):
         count = 0
 
         split = 'val' if label in args.val_labels else 'train'
         relevant_labels = args.val_labels if split == 'val' \
                 else list(set(labels) - set(args.val_labels))
 
-        for optim, n, lr, wd in itertools.product(optims, ns, lrs, wds):
+        for _, optim, n, lr, wd in tqdm(list(itertools.product(range(n_samples), optims, ns, lrs, wds)):
             # format
             name = '{}_{}'.format(label, count)
             parent_d = root / stage / split / str(label)
@@ -245,8 +249,6 @@ if __name__ == '__main__':
                 # pass in cli args too
                 if len(sys.argv) > 1:
                     arg_str += ' '.join(sys.argv[1:])
-
-                print(arg_str)
 
                 # train
                 args = parser.parse_args(arg_str.split())

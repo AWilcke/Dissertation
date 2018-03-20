@@ -21,13 +21,13 @@ class MLP_100(nn.Module):
         return y
 
 class ConvNet(nn.Module):
-    def __init__(self, *args, **kwargs):
+    def __init__(self, bias=False, *args, **kwargs):
         super().__init__()
         self.conv = nn.Sequential(
-                nn.Conv2d(1, 5, 5),
+                nn.Conv2d(1, 5, 5, bias=bias),
                 nn.MaxPool2d(2),
                 nn.ReLU(),
-                nn.Conv2d(5, 10, 5),
+                nn.Conv2d(5, 10, 5, bias=bias),
                 nn.MaxPool2d(2),
                 nn.ReLU(),
                 )
@@ -113,7 +113,7 @@ class MLP_Regressor(BaseRegressor):
         def _make_layer(h_dim):
             return nn.Sequential(
                     nn.Linear(h_dim, h_dim),
-                    nn.ReLU(),
+                    nn.LeakyReLU(0.1),
                     nn.Linear(h_dim, h_dim),
                     )
 
@@ -250,9 +250,12 @@ class LargeConvNetRegressor(ConvNetRegressor):
         return nn.Sequential(
                 nn.Linear(input_dim, h1),
                 nn.LeakyReLU(negative_slope=0.1),
+                # nn.Tanh(),
                 nn.Linear(h1, h2),
                 nn.LeakyReLU(negative_slope=0.1),
+                # nn.Tanh(),
                 nn.Linear(h2, input_dim),
                 nn.LeakyReLU(negative_slope=0.1),
+                # nn.Tanh(),
                 nn.Linear(input_dim, input_dim),
                 )
