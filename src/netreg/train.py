@@ -3,7 +3,8 @@ import torch.optim as optim
 from torch.autograd import Variable
 from dataset import MLP_Dataset
 from torch.utils.data import DataLoader
-from models import MLP_100, MLP_Regressor, ConvRegressor, ConvNet, ConvNetRegressor, LargeConvNetRegressor
+from models import MLP_100, MLP_Regressor, ConvRegressor, ConvNet, \
+        ConvNetRegressor, LargeConvNetRegressor, ConvConvNetRegressor
 from utils import collate_fn, id_init, xavier_init, id_normal_init
 import argparse
 from tensorboardX import SummaryWriter
@@ -21,6 +22,7 @@ model_dict = {
         'conv_reg': ConvRegressor,
         'convnet_reg': ConvNetRegressor,
         'convnet_reg_lg': LargeConvNetRegressor,
+        'convconv': ConvConvNetRegressor,
         }
 
 init_dict = {
@@ -98,14 +100,15 @@ def train(args):
     w0 = [torch.FloatTensor(*((BATCH_SIZE,) + x.size())) for x in dataset[0]['w0']]
     w1 = [torch.FloatTensor(*((BATCH_SIZE,) + x.size())) for x in dataset[0]['w1']]
 
-    # cast to gpu
-    if torch.cuda.is_available():
-        w0 = [x.cuda() for x in w0]
-        w1 = [x.cuda() for x in w1]
 
     # wrap in variables
     w0 = [Variable(x) for x in w0]
     w1 = [Variable(x) for x in w1]
+
+    # cast to gpu
+    if torch.cuda.is_available():
+        w0 = [x.cuda() for x in w0]
+        w1 = [x.cuda() for x in w1]
 
     for epoch in tqdm(range(start_epoch, NUM_EPOCHS)):
 
@@ -131,12 +134,9 @@ def train(args):
                 train = [t.cuda() for t in train]
                 labels = [l.cuda() for l in labels]
 
-            try:
-                regressed_w = net(w0) # regressed_w[-1] is the intercept
-            except:
-                print(w0)
-
             optimizer.zero_grad()
+
+            regressed_w = net(w0) # regressed_w[-1] is the intercept
             
             l2_loss = net.l2_loss(regressed_w, w1)
             hinge_loss = net.perf_loss(regressed_w, train, labels)

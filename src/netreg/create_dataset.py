@@ -234,7 +234,7 @@ if __name__ == '__main__':
         relevant_labels = args.val_labels if split == 'val' \
                 else list(set(labels) - set(args.val_labels))
 
-        for _, optim, n, lr, wd in tqdm(list(itertools.product(range(n_samples), optims, ns, lrs, wds)):
+        for _, optim, n, lr, wd in tqdm(list(itertools.product(range(n_samples), optims, ns, lrs, wds))):
             # format
             name = '{}_{}'.format(label, count)
             parent_d = root / stage / split / str(label)

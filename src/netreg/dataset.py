@@ -88,7 +88,10 @@ class MLP_Dataset(Dataset):
     def __getitem__(self, idx):
         # get info from w0
         with open(self.file_list[idx], 'rb') as f:
-            sample = pickle.load(f)
+            try:
+                sample = pickle.load(f)
+            except:
+                raise Exception(f'{self.file_list[idx]} is invalid file')
 
         # transform state_dict into batcheable format
 

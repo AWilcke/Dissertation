@@ -45,8 +45,13 @@ class ConvNet(nn.Module):
 
 
 class BaseRegressor(nn.Module):
-    def __init__(self):
+    def __init__(self, bias=[True, True, True, True]):
+        '''
+        bias :: (list of Bool) : layer-wise presence of bias
+        '''
+
         super().__init__()
+        self.bias = bias
 
     def forward(self, x):
         pass
@@ -55,8 +60,16 @@ class BaseRegressor(nn.Module):
         l = []
         for i, tensor in enumerate(weights):
             d = {}
-            d['weight'] = tensor[:,:,:-1]
-            d['bias'] = tensor[:,:,-1]
+            if self.bias[i]:
+                d['weight'] = tensor[:,:,:-1]
+                d['bias'] = tensor[:,:,-1]
+            # if no bias, just fill with 0s
+            else:
+                d['weight'] = tensor
+                b = Variable(torch.zeros(tensor.size()[:-1]))
+                if tensor.is_cuda:
+                    b = b.cuda()
+                d['bias'] = b
             l.append(d)
 
         return l
@@ -180,14 +193,14 @@ class ConvRegressor(BaseRegressor):
 
 class ConvNetRegressor(BaseRegressor):
     
-    def __init__(self, *args, **kwargs):
+    def __init__(self, bias=[True]*4, *args, **kwargs):
 
-        super().__init__()
+        super().__init__(bias=bias)
 
-        self.layer_1 = self._make_layer(5*26)
-        self.layer_2 = self._make_layer(10*126)
-        self.layer_3 = self._make_layer(16*161)
-        self.layer_4 = self._make_layer(1*17)
+        self.layer_1 = self._make_layer(5*(25+bias[0]))
+        self.layer_2 = self._make_layer(10*(125+bias[1]))
+        self.layer_3 = self._make_layer(16*(160+bias[2]))
+        self.layer_4 = self._make_layer(1*(16+bias[3]))
 
         self.layers = [self.layer_1,
                 self.layer_2,
@@ -259,3 +272,54 @@ class LargeConvNetRegressor(ConvNetRegressor):
                 # nn.Tanh(),
                 nn.Linear(input_dim, input_dim),
                 )
+
+class ConvConvNetRegressor(ConvNetRegressor):
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(bias=[False, False, True, True])  # cannot do conv with bias
+
+        # overwrite conv layer regressors
+        self.layer_1 = self._make_conv_layer(1, 5)
+        self.layer_2 = self._make_conv_layer(5, 10)
+
+        self.layers = [self.layer_1,
+                self.layer_2,
+                self.layer_3,
+                self.layer_4]
+
+    def _make_conv_layer(self, input_dim, output_dim, kernel_size=3):
+
+        pad_in = input_dim // kernel_size
+        pad_hw = 5 // kernel_size
+        kernel_in = kernel_size
+
+        if input_dim == 1:
+            pad_in = 0
+            kernel_in = 1
+
+        out = nn.Sequential(
+                nn.Conv3d(output_dim, output_dim, 
+                    (kernel_in, kernel_size, kernel_size),
+                    padding=(pad_in, pad_hw, pad_hw)),
+                nn.LeakyReLU(0.1),
+                nn.Conv3d(output_dim, output_dim, 
+                    (kernel_in, kernel_size, kernel_size),
+                    padding=(pad_in, pad_hw, pad_hw)),
+                nn.LeakyReLU(0.1),
+                nn.Conv3d(output_dim, output_dim, 
+                    (kernel_in, kernel_size, kernel_size),
+                    padding=(pad_in, pad_hw, pad_hw)),
+                )
+        return out
+
+    def forward(self, x):
+        out = []
+        for i, weights in enumerate(x):
+            if i<2:
+                reshape = weights.view(weights.size(0), weights.size(1), -1, 5, 5)
+            else:
+                reshape = weights.view(weights.size(0), -1)
+
+            regress = self.layers[i](reshape)
+            out.append(regress.view_as(weights))
+        return out
