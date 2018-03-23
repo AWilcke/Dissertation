@@ -118,7 +118,7 @@ class BaseRegressor(nn.Module):
             # print(pred)
             hinge += torch.nn.functional.binary_cross_entropy(pred, y.view(-1,1))
 
-        return hinge
+        return hinge.div(regressed_w[0].size(0))
 
 class MLP_Regressor(BaseRegressor):
     def __init__(self, block_size=10, *args, **kwargs):
@@ -315,7 +315,7 @@ class ConvConvNetRegressor(ConvNetRegressor):
     def forward(self, x):
         out = []
         for i, weights in enumerate(x):
-            if i<2:
+            if i < 2:
                 reshape = weights.view(weights.size(0), weights.size(1), -1, 5, 5)
             else:
                 reshape = weights.view(weights.size(0), -1)
@@ -323,3 +323,102 @@ class ConvConvNetRegressor(ConvNetRegressor):
             regress = self.layers[i](reshape)
             out.append(regress.view_as(weights))
         return out
+
+
+class VAE(nn.Module):
+    def __init__(self, input_dim):
+
+        super().__init__()
+
+        self.h1 = int(0.75 * input_dim)
+        self.h2 = int(0.5 * input_dim)
+
+        self.fc1 = nn.Linear(input_dim, self.h1)
+        self.fc21 = nn.Linear(self.h1, self.h2)
+        self.fc22 = nn.Linear(self.h1, self.h2)
+
+        self.lrelu = nn.LeakyReLU(0.1)
+
+        self.decoder = nn.Sequential(
+                nn.Linear(self.h2, self.h1),
+                self.lrelu,
+                nn.Linear(self.h1, input_dim)
+                )
+
+    def encoder(self, x):
+        y1 = self.lrelu(self.fc1(x))
+        return self.fc21(y1), self.fc22(y1)
+
+    def reparametrize(self, mu, logvar):
+        if self.training:
+            std = logvar.mul(.5).exp()
+            eps = Variable(std.data.new(std.size()).normal_())
+            return eps.mul(std).add(mu)
+        else:
+            return mu
+
+    def forward(self, x):
+        mu, logvar = self.encoder(x)
+        z = self.reparametrize(mu, logvar)
+        return self.decoder(z), mu, logvar
+
+    def loss(recon_x, x, mu, logvar):
+        BCE = F.binary_cross_entropy(recon_x, x.view(x.size(0), -1), size_average=False)
+
+        # see Appendix B from VAE paper:
+        # Kingma and Welling. Auto-Encoding Variational Bayes. ICLR, 2014
+        # https://arxiv.org/abs/1312.6114
+        # 0.5 * sum(1 + log(sigma^2) - mu^2 - sigma^2)
+        KLD = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
+
+        return BCE, KLD
+
+
+class VAEConvRegressor(ConvNetRegressor):
+
+    def __init__(self, bias=[True]*4, regressor=False, *args, **kwargs):
+        '''
+        regressor :: bool : whether the VAE is being trained as a regressor
+                            or as a VAE. In the former case, will only output
+                            regressed values, not mu and logvar.
+        '''
+
+        super().__init__(bias=bias)
+        self.regressor = regressor
+
+    def _make_layer(self, input_dim):
+        return VAE(input_dim)
+
+    def forward(self, x):
+        out = []
+        mus = []
+        logvars = []
+        for i, weights in enumerate(x):
+            reshape = weights.view(weights.size(0), -1)
+            regress, mu, logvar = self.layers[i](reshape)
+            out.append(regress.view_as(weights))
+            mus.append(mu)
+            logvars.append(logvar)
+
+        if self.regressor:
+            return out, mus, logvars
+        else:
+            return out
+
+    def vae_loss(self, recon_x, x, mus, logvars):
+        BCE = Variable(torch.zeros(1))
+        KLD = Variable(torch.zeros(1))
+
+        if x[0].is_cuda:
+            BCE = BCE.cuda()
+            KLD = KLD.cuda()
+
+        # layerwise VAE loss
+        for i in range(len(x)):
+            i_bce, i_kld = \
+                self.layers[i].loss(recon_x[i], x[i], mus[i], logvars[i])
+
+            BCE += i_bce
+            KLD += i_kld
+
+        return BCE, KLD

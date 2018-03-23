@@ -5,6 +5,7 @@ import torch
 from torch.utils.data.dataloader import default_collate
 from torch import nn
 
+
 def id_init(m, dim=None, *args, **kwargs):
 
     classname = m.__class__.__name__
@@ -21,6 +22,7 @@ def id_init(m, dim=None, *args, **kwargs):
 
         m.bias.data.fill_(0)
 
+
 def id_normal_init(m, dim=None, *args, **kwargs):
 
     classname = m.__class__.__name__
@@ -31,7 +33,7 @@ def id_normal_init(m, dim=None, *args, **kwargs):
             assert w.size(0) == w.size(1), "Dimension=None only possible when matrix is square."
             dim = w.size(0)
 
-        w.normal_(0,0.02)
+        w.normal_(0, 0.02)
         w.add_(torch.eye(dim))
         m.bias.data.fill_(0)
 

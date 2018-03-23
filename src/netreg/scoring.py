@@ -83,7 +83,7 @@ def check_performance(net, val_dataloader, writer, args, global_step):
             assert cur_lab in args.val_labels, f"{cur_lab} is not a validation label : {args.val_labels}"
 
             mnist = MNISTbyClass(args.mnist, args.index, 
-                    cur_lab, 400, 
+                    cur_lab, 400,
                     relevant_labels=args.val_labels, train_split=False,
                     extended=args.extended)
             loader = DataLoader(mnist, batch_size=200, num_workers=0)
