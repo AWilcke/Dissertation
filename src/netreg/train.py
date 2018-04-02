@@ -36,13 +36,13 @@ def train(args):
     dataset = MLP_Dataset(args.w0, args.w1, args.mnist, train=True, extended=args.extended)
     print(f"Train: {len(dataset)}")
     dataloader = DataLoader(dataset, batch_size=BATCH_SIZE,
-            shuffle=True, num_workers=0, collate_fn=collate_fn)
+            shuffle=True, num_workers=0, collate_fn=collate_fn, drop_last=True)
 
     # validation datasets
     val_dataset = MLP_Dataset(args.w0, args.w1, args.mnist, train=False, extended=args.extended)
     print(f"Val: {len(val_dataset)}")
     val_dataloader = DataLoader(val_dataset, batch_size=BATCH_SIZE,
-            shuffle=False, num_workers=0, collate_fn=collate_fn)
+            shuffle=False, num_workers=0, collate_fn=collate_fn, drop_last=True)
 
     writer = SummaryWriter(args.r)
 

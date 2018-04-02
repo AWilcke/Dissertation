@@ -9,6 +9,7 @@ from tensorboardX import SummaryWriter
 import os
 import scoring
 from tqdm import tqdm
+from utils import collate_fn
 
 BATCH_SIZE = 64  # do not set to 1, as BatchNorm won't work
 NUM_EPOCHS = 500
@@ -122,6 +123,7 @@ def train(args):
             optimizer.zero_grad()
 
             regressed_w, mus, logvars = net(w0)  # regressed_w[-1] is the intercept
+            
 
             BCE, KLD = net.vae_loss(regressed_w, w0, mus, logvars)
 
@@ -153,7 +155,7 @@ def train(args):
             ###### VALIDATION ######
             ########################
 
-            if global_step % args.validate_every_n == 0:
+            if global_step % args.validate_every_n == 0 and global_step != 0:
 
                 # save computation
                 for p in net.parameters():
@@ -201,7 +203,7 @@ def train(args):
                     p.requires_grad = True
                 net.train()
 
-            if global_step % args.classif_every_n == 0:
+            if global_step % args.classif_every_n == 0  and global_step != 0:
 
                 net.regressor = True
                 scoring.check_performance(net, val_dataloader, writer, args, global_step)

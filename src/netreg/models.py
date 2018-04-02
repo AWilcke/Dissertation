@@ -211,6 +211,7 @@ class ConvNetRegressor(BaseRegressor):
         return nn.Sequential(
                 nn.Linear(h_dim, h_dim),
                 nn.LeakyReLU(negative_slope=0.1),
+                nn.BatchNorm1d(h_dim),
                 nn.Linear(h_dim, h_dim),
                 )
 
@@ -263,12 +264,15 @@ class LargeConvNetRegressor(ConvNetRegressor):
         return nn.Sequential(
                 nn.Linear(input_dim, h1),
                 nn.LeakyReLU(negative_slope=0.1),
+                nn.BatchNorm1d(h1),
                 # nn.Tanh(),
                 nn.Linear(h1, h2),
                 nn.LeakyReLU(negative_slope=0.1),
+                nn.BatchNorm1d(h2),
                 # nn.Tanh(),
                 nn.Linear(h2, input_dim),
                 nn.LeakyReLU(negative_slope=0.1),
+                nn.BatchNorm1d(input_dim),
                 # nn.Tanh(),
                 nn.Linear(input_dim, input_dim),
                 )
@@ -362,16 +366,17 @@ class VAE(nn.Module):
         z = self.reparametrize(mu, logvar)
         return self.decoder(z), mu, logvar
 
-    def loss(recon_x, x, mu, logvar):
-        BCE = F.binary_cross_entropy(recon_x, x.view(x.size(0), -1), size_average=False)
+    def loss(self, recon_x, x, mu, logvar):
+        BCE = F.mse_loss(recon_x, x.view(x.size(0), -1))
 
         # see Appendix B from VAE paper:
         # Kingma and Welling. Auto-Encoding Variational Bayes. ICLR, 2014
         # https://arxiv.org/abs/1312.6114
         # 0.5 * sum(1 + log(sigma^2) - mu^2 - sigma^2)
-        KLD = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
+        KLD = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp(), dim=1)
+ 
 
-        return BCE, KLD
+        return BCE, KLD.mean()
 
 
 class VAEConvRegressor(ConvNetRegressor):
@@ -401,9 +406,9 @@ class VAEConvRegressor(ConvNetRegressor):
             logvars.append(logvar)
 
         if self.regressor:
-            return out, mus, logvars
-        else:
             return out
+        else:
+            return out, mus, logvars
 
     def vae_loss(self, recon_x, x, mus, logvars):
         BCE = Variable(torch.zeros(1))
