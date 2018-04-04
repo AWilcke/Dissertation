@@ -4,13 +4,15 @@ from torch.autograd import Variable
 from dataset import MLP_Dataset
 from torch.utils.data import DataLoader
 from models import MLP_100, MLP_Regressor, ConvRegressor, ConvNet, \
-        ConvNetRegressor, LargeConvNetRegressor, ConvConvNetRegressor
+        ConvNetRegressor, LargeConvNetRegressor, ConvConvNetRegressor, \
+        VAEConvRegressor
 from utils import collate_fn, id_init, xavier_init, id_normal_init
 import argparse
 from tensorboardX import SummaryWriter
 import os
 import scoring
 from tqdm import tqdm
+from pathlib import Path
 
 BATCH_SIZE = 64 # do not set to 1, as BatchNorm won't work
 NUM_EPOCHS = 500
@@ -23,6 +25,7 @@ model_dict = {
         'convnet_reg': ConvNetRegressor,
         'convnet_reg_lg': LargeConvNetRegressor,
         'convconv': ConvConvNetRegressor,
+        'vae': VAEConvRegressor,
         }
 
 init_dict = {
@@ -55,13 +58,23 @@ def train(args):
         n_gpu = 0
     
     
-    net = model_dict[args.net](n_gpu=n_gpu, filter_size=args.filter_size)
+    net = model_dict[args.net](
+            dropout=args.dropout, 
+            n_gpu=n_gpu, 
+            filter_size=args.filter_size,
+            activation=args.activation,
+            bn=args.bn)
     print(net)
-
+    
+    # start with pretrained vae
+    if args.net == 'vae':
+        net.load_state_dict(torch.load(
+            Path('logs/ckpt/vae/136.ckpt')))
     # layer-wise init - needed for non-square identity init
-    for layer in net.layers:
-        dim = layer.state_dict()['0.weight'].size(1) # input size of layer
-        layer.apply(lambda m : init_dict[args.weight_init](m, dim=dim))
+    else:
+        for layer in net.layers:
+            dim = layer.state_dict()['0.weight'].size(1) # input size of layer
+            layer.apply(lambda m : init_dict[args.weight_init](m, dim=dim))
 
     start_epoch = 0
 
@@ -218,6 +231,9 @@ if __name__ == "__main__":
             default='id')
     parser.add_argument('--filter_size', type=int, default=1,
             help='filter size for conv regressor, must be odd')
+    parser.add_argument('--dropout', type=float, default=0)
+    parser.add_argument('--activation', choices=['lrelu', 'tanh'], default='lrelu')
+    parser.add_argument('--bn', action='store_true')
 
     # training args
     parser.add_argument('--optimiser', type=str, default='sgd')

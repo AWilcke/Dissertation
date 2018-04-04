@@ -100,7 +100,7 @@ class BaseRegressor(nn.Module):
                     torch.norm(
                         regress.view(batch,-1) - target.view(batch, -1),
                         p=2, dim=1)).pow(2)
-        return l2
+        return l2.div(batch)
     
     def perf_loss(self, regressed_w, train, labels):
 
@@ -193,9 +193,13 @@ class ConvRegressor(BaseRegressor):
 
 class ConvNetRegressor(BaseRegressor):
     
-    def __init__(self, bias=[True]*4, *args, **kwargs):
+    def __init__(self, bias=[True]*4, dropout=0, activation='lrelu', bn=True, *args, **kwargs):
 
         super().__init__(bias=bias)
+
+        self.dropout = dropout
+        self.activation = nn.LeakyReLU(0.1) if activation == 'lrelu' else nn.Tanh()
+        self.bn = bn
 
         self.layer_1 = self._make_layer(5*(25+bias[0]))
         self.layer_2 = self._make_layer(10*(125+bias[1]))
@@ -208,12 +212,21 @@ class ConvNetRegressor(BaseRegressor):
                 self.layer_4]
 
     def _make_layer(self, h_dim):
-        return nn.Sequential(
-                nn.Linear(h_dim, h_dim),
-                nn.LeakyReLU(negative_slope=0.1),
-                nn.BatchNorm1d(h_dim),
-                nn.Linear(h_dim, h_dim),
-                )
+        if self.bn:
+            return nn.Sequential(
+                    nn.Linear(h_dim, h_dim),
+                    nn.BatchNorm1d(h_dim),
+                    self.activation,
+                    nn.Dropout(self.dropout),
+                    nn.Linear(h_dim, h_dim),
+                    )
+        else:
+            return nn.Sequential(
+                    nn.Linear(h_dim, h_dim),
+                    self.activation,
+                    nn.Dropout(self.dropout),
+                    nn.Linear(h_dim, h_dim),
+                    )
 
     def forward(self, x):
         out = []
@@ -253,34 +266,49 @@ class ConvNetRegressor(BaseRegressor):
 
 class LargeConvNetRegressor(ConvNetRegressor):
 
-    def __init__(self, *args, **kwargs):
-        super().__init__()
+    def __init__(self, bias=[True]*4, dropout=0, activation='lrelu', bn=True, *args, **kwargs):
+        super().__init__(bias=bias, dropout=dropout, activation=activation, bn=bn)
 
     def _make_layer(self, input_dim):
 
         h1 = int(1.5*input_dim)
         h2 = int(1.25*input_dim)
 
-        return nn.Sequential(
-                nn.Linear(input_dim, h1),
-                nn.LeakyReLU(negative_slope=0.1),
-                nn.BatchNorm1d(h1),
-                # nn.Tanh(),
-                nn.Linear(h1, h2),
-                nn.LeakyReLU(negative_slope=0.1),
-                nn.BatchNorm1d(h2),
-                # nn.Tanh(),
-                nn.Linear(h2, input_dim),
-                nn.LeakyReLU(negative_slope=0.1),
-                nn.BatchNorm1d(input_dim),
-                # nn.Tanh(),
-                nn.Linear(input_dim, input_dim),
-                )
+        if self.bn:
+            return nn.Sequential(
+                    nn.Linear(input_dim, h1),
+                    nn.BatchNorm1d(h1),
+                    self.activation,
+                    nn.Dropout(self.dropout),
+                    nn.Linear(h1, h2),
+                    nn.BatchNorm1d(h2),
+                    self.activation,
+                    nn.Dropout(self.dropout),
+                    nn.Linear(h2, input_dim),
+                    nn.BatchNorm1d(input_dim),
+                    self.activation,
+                    nn.Dropout(self.dropout),
+                    nn.Linear(input_dim, input_dim),
+                    )
+        else:
+            return nn.Sequential(
+                    nn.Linear(input_dim, h1),
+                    self.activation,
+                    nn.Dropout(self.dropout),
+                    nn.Linear(h1, h2),
+                    self.activation,
+                    nn.Dropout(self.dropout),
+                    nn.Linear(h2, input_dim),
+                    self.activation,
+                    nn.Dropout(self.dropout),
+                    nn.Linear(input_dim, input_dim),
+                    )
+
 
 class ConvConvNetRegressor(ConvNetRegressor):
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(bias=[False, False, True, True])  # cannot do conv with bias
+    def __init__(self, bias=[True]*4, dropout=0, activation='lrelu', bn=True, *args, **kwargs):
+        super().__init__(bias=bias, dropout=dropout, activation=activation, bn=bn)
 
         # overwrite conv layer regressors
         self.layer_1 = self._make_conv_layer(1, 5)
@@ -301,19 +329,40 @@ class ConvConvNetRegressor(ConvNetRegressor):
             pad_in = 0
             kernel_in = 1
 
-        out = nn.Sequential(
-                nn.Conv3d(output_dim, output_dim, 
-                    (kernel_in, kernel_size, kernel_size),
-                    padding=(pad_in, pad_hw, pad_hw)),
-                nn.LeakyReLU(0.1),
-                nn.Conv3d(output_dim, output_dim, 
-                    (kernel_in, kernel_size, kernel_size),
-                    padding=(pad_in, pad_hw, pad_hw)),
-                nn.LeakyReLU(0.1),
-                nn.Conv3d(output_dim, output_dim, 
-                    (kernel_in, kernel_size, kernel_size),
-                    padding=(pad_in, pad_hw, pad_hw)),
-                )
+        if self.bn:
+            out = nn.Sequential(
+                    nn.Conv3d(output_dim, output_dim, 
+                        (kernel_in, kernel_size, kernel_size),
+                        padding=(pad_in, pad_hw, pad_hw)),
+                    nn.BatchNorm3d(output_dim),
+                    self.activation,
+                    nn.Dropout(self.dropout),
+                    nn.Conv3d(output_dim, output_dim, 
+                        (kernel_in, kernel_size, kernel_size),
+                        padding=(pad_in, pad_hw, pad_hw)),
+                    nn.BatchNorm3d(output_dim),
+                    self.activation,
+                    nn.Dropout(self.dropout),
+                    nn.Conv3d(output_dim, output_dim, 
+                        (kernel_in, kernel_size, kernel_size),
+                        padding=(pad_in, pad_hw, pad_hw)),
+                    )
+        else:
+            out = nn.Sequential(
+                    nn.Conv3d(output_dim, output_dim, 
+                        (kernel_in, kernel_size, kernel_size),
+                        padding=(pad_in, pad_hw, pad_hw)),
+                    self.activation,
+                    nn.Dropout(self.dropout),
+                    nn.Conv3d(output_dim, output_dim, 
+                        (kernel_in, kernel_size, kernel_size),
+                        padding=(pad_in, pad_hw, pad_hw)),
+                    self.activation,
+                    nn.Dropout(self.dropout),
+                    nn.Conv3d(output_dim, output_dim, 
+                        (kernel_in, kernel_size, kernel_size),
+                        padding=(pad_in, pad_hw, pad_hw)),
+                    )
         return out
 
     def forward(self, x):
