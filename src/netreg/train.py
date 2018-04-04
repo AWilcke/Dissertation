@@ -65,6 +65,8 @@ def train(args):
             activation=args.activation,
             bn=args.bn)
     print(net)
+    print('##########################################')
+    print(net.layers())
     
     # start with pretrained vae
     if args.net == 'vae':
@@ -72,7 +74,7 @@ def train(args):
             Path('logs/ckpt/vae/136.ckpt')))
     # layer-wise init - needed for non-square identity init
     else:
-        for layer in net.layers:
+        for layer in net.layers():
             dim = layer.state_dict()['0.weight'].size(1) # input size of layer
             layer.apply(lambda m : init_dict[args.weight_init](m, dim=dim))
 

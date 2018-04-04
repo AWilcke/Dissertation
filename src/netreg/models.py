@@ -137,7 +137,8 @@ class MLP_Regressor(BaseRegressor):
 
         self.block_size = block_size
 
-        self.layers = [self.layer0,
+    def layers(self):
+        return [self.layer0,
                 self.layer1,
                 self.layer2,
                 ]
@@ -163,7 +164,7 @@ class MLP_Regressor(BaseRegressor):
 
             return torch.cat(out, dim=1)
 
-        return [_layer_forward(self.layers[i], l) for i, l in enumerate(x)]
+        return [_layer_forward(self.layers()[i], l) for i, l in enumerate(x)]
 
 
 
@@ -186,10 +187,9 @@ class ConvRegressor(BaseRegressor):
                 nn.Linear(101,101),
                 )
 
-        self.layers = [self.layer_1, self.layer_2, self.layer_3]
 
     def forward(self, x):
-        return [self.layers[i](l) for i, l in enumerate(x)]
+        return [self.layers()[i](l) for i, l in enumerate(x)]
 
 class ConvNetRegressor(BaseRegressor):
     
@@ -206,7 +206,8 @@ class ConvNetRegressor(BaseRegressor):
         self.layer_3 = self._make_layer(16*(160+bias[2]))
         self.layer_4 = self._make_layer(1*(16+bias[3]))
 
-        self.layers = [self.layer_1,
+    def layers(self):
+        return [self.layer_1,
                 self.layer_2,
                 self.layer_3,
                 self.layer_4]
@@ -232,7 +233,7 @@ class ConvNetRegressor(BaseRegressor):
         out = []
         for i, weights in enumerate(x):
             reshape = weights.view(weights.size(0), -1)
-            regress = self.layers[i](reshape)
+            regress = self.layers()[i](reshape)
             out.append(regress.view_as(weights))
         return out
     
@@ -314,11 +315,6 @@ class ConvConvNetRegressor(ConvNetRegressor):
         self.layer_1 = self._make_conv_layer(1, 5)
         self.layer_2 = self._make_conv_layer(5, 10)
 
-        self.layers = [self.layer_1,
-                self.layer_2,
-                self.layer_3,
-                self.layer_4]
-
     def _make_conv_layer(self, input_dim, output_dim, kernel_size=3):
 
         pad_in = input_dim // kernel_size
@@ -373,7 +369,7 @@ class ConvConvNetRegressor(ConvNetRegressor):
             else:
                 reshape = weights.view(weights.size(0), -1)
 
-            regress = self.layers[i](reshape)
+            regress = self.layers()[i](reshape)
             out.append(regress.view_as(weights))
         return out
 
@@ -449,7 +445,7 @@ class VAEConvRegressor(ConvNetRegressor):
         logvars = []
         for i, weights in enumerate(x):
             reshape = weights.view(weights.size(0), -1)
-            regress, mu, logvar = self.layers[i](reshape)
+            regress, mu, logvar = self.layers()[i](reshape)
             out.append(regress.view_as(weights))
             mus.append(mu)
             logvars.append(logvar)
@@ -470,7 +466,7 @@ class VAEConvRegressor(ConvNetRegressor):
         # layerwise VAE loss
         for i in range(len(x)):
             i_bce, i_kld = \
-                self.layers[i].loss(recon_x[i], x[i], mus[i], logvars[i])
+                self.layers()[i].loss(recon_x[i], x[i], mus[i], logvars[i])
 
             BCE += i_bce
             KLD += i_kld
