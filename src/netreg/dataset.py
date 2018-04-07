@@ -16,7 +16,7 @@ class MNISTbyClass(Dataset):
             index (string) : path to "index.pickle" file
             label (int) : which label is the postive sample
             n (int) : number of images to sample
-            relevant_labels (bool) : train or validation label set
+            relevant_labels (list(int)) : train or validation label set
             train_split (bool) : train or validation data split
             extended (bool) : EMNIST or MNIST
         """
