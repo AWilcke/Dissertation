@@ -224,7 +224,7 @@ class ConvNetRegressor(BaseRegressor):
 
         super().__init__(bias=bias)
 
-        self.dropout = dropout
+        self.dropout = [nn.Dropout(dropout)] if dropout else []
         self.activation = nn.LeakyReLU(0.1) if activation == 'lrelu' else nn.Tanh()
         self.bn = bn
 
@@ -245,14 +245,16 @@ class ConvNetRegressor(BaseRegressor):
                     nn.Linear(h_dim, h_dim),
                     nn.BatchNorm1d(h_dim),
                     self.activation,
-                    nn.Dropout(self.dropout),
+                    # nn.Dropout(self.dropout),
+                    *self.dropout,
                     nn.Linear(h_dim, h_dim),
                     )
         else:
             return nn.Sequential(
                     nn.Linear(h_dim, h_dim),
                     self.activation,
-                    nn.Dropout(self.dropout),
+                    # nn.Dropout(self.dropout),
+                    *self.dropout,
                     nn.Linear(h_dim, h_dim),
                     )
 

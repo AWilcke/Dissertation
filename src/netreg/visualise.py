@@ -5,17 +5,31 @@ from torch.autograd.gradcheck import zero_gradients
 from dataset import MNISTbyClass
 from torch.utils.data import DataLoader
 from argparse import ArgumentParser
-from models import MLP_100
+from models import MLP_100, ConvNet, \
+        ConvNetRegressor
 import pickle
 from tqdm import tqdm
 from sklearn.decomposition import PCA
 from sklearn.neighbors import KNeighborsClassifier as KNN
 from matplotlib import pyplot as plt
 import numpy as np
+import utils
 
 plt.rcParams['image.cmap'] = 'plasma'
+plt.switch_backend('agg')
+
+models = {
+        'mlp': MLP_100,
+        'conv': ConvNet,
+        }
+
+regressors = {
+        'convreg': ConvNetRegressor,
+        }
 
 parser = ArgumentParser()
+parser.add_argument('--model', choices=models.keys())
+parser.add_argument('--regressor', choices=regressors.keys())
 parser.add_argument('--mnist')
 parser.add_argument('--extended', action='store_true')
 parser.add_argument('--val_labels', nargs='+', type=int,
@@ -23,7 +37,11 @@ parser.add_argument('--val_labels', nargs='+', type=int,
 parser.add_argument('--index')
 parser.add_argument('--label', type=int,
         help='label of current model')
+
 parser.add_argument('--model_path')
+parser.add_argument('--regressor_path')
+parser.add_argument('--w1_path')
+
 parser.add_argument('--gradient', action='store_true')
 parser.add_argument('--boundary', action='store_true')
 parser.add_argument('--nn', action='store_true')
@@ -75,52 +93,6 @@ def follow_gradient(img, net, alpha):
 
     return boundary, pred
 
-
-def gradient_boundary(img, net, alpha):
-    loss = nn.BCELoss()
-
-    y = Variable(torch.FloatTensor(1, 1))
-
-    if torch.cuda.is_available():
-        img = img.cuda()
-        y = y.cuda()
-
-    x = Variable(img, requires_grad=True)
-    zero_gradients(x)
-
-    # get initial prediction
-    out = net(x)
-    pred = (out.data[0] > 0.5).cpu()
-
-    # copy prediction into y
-    y.data.copy_(pred)
-
-    for _ in range(100):
-        error = loss(out, y)
-        error.backward()
-
-        gradient = torch.sign(x.grad.data)
-
-        gradient_mask = alpha * gradient
-
-        # create updated img
-        output = x.data + gradient_mask
-        output.clamp_(0., 1.)
-
-        # put step in x
-        x.data.copy_(output)
-
-        # repeat the process
-        zero_gradients(x)
-        out = net(x)
-
-        # return if on decision boundary
-        if (out.data - 0.5).abs()[0, 0] < 0.01:
-            return [(output.cpu().squeeze(0).numpy(), 0.5)], pred
-
-    return [], pred
-
-
 def random_jitter(img, net, sigma):
 
     boundary = []
@@ -142,7 +114,7 @@ def random_jitter(img, net, sigma):
     return boundary
 
 
-def model_decision(net, args):
+def model_decision(net, args, regressed_net=None, w1_net=None):
 
     dataset = MNISTbyClass(args.mnist, args.index, 
             args.label, 400,
@@ -153,40 +125,45 @@ def model_decision(net, args):
             shuffle=False, num_workers=0)
 
     real = []
-    boundary = []
+    boundary_og = []
+    boundary_reg = []
+    boundary_w1 = []
 
-    acc = 0
+    acc_og = 0
+    acc_reg = 0
+    acc_w1 = 0
     total = 0
     for img, label in tqdm(dataloader):
-        if args.gradient:
-            out, pred = follow_gradient(img, net, 0.1)
-        elif args.boundary:
-            out, pred = gradient_boundary(img, net, 1e-2)
-        else:
-            out = random_jitter(img, net, 0.1)
+
+        out, pred = follow_gradient(img, net, 0.1)
 
         real.append((img.squeeze(0).numpy(), label[0]))
-        boundary += out
+        boundary_og += out
 
         total += 1
-        acc += (pred.long() == label)[0]
+        acc_og += (pred.long() == label)[0]
 
-    print(f'Accuracy: {acc/total:.3f}')
+        if regressed_net is not None:
+            out, pred_reg = follow_gradient(img, regressed_net, 0.1)
+            boundary_reg += out
+            acc_reg += (pred_reg.long() == label)[0]
 
-    return real, boundary
+        if w1_net is not None:
+            out, pred_w1 = follow_gradient(img, w1_net, 0.1)
+            boundary_w1 += out
+            acc_w1 += (pred_w1.long() == label)[0]
+
+    print(f'Original Accuracy: {acc_og/total:.3f}')
+    print(f'Regressed Accuracy: {acc_reg/total:.3f}')
+    print(f'W1 Accuracy: {acc_w1/total:.3f}')
+
+    return real, boundary_og, boundary_reg, boundary_w1
 
 
-def viz(args):
-    net = MLP_100()
+def viz(net, args, regressed=None, w1_net=None):
 
-    with open(args.model_path, 'rb') as f:
-        d = pickle.load(f)['weights']
-        net.load_state_dict(d)
-
-    if torch.cuda.is_available():
-        net = net.cuda()
-
-    real, boundary = model_decision(net, args)
+    real, boundary, boundary_reg, boundary_w1 = model_decision(
+            net, args, regressed_net=regressed, w1_net=w1_net)
 
     real_points = np.stack([x[0] for x in real])
     real_labels = np.stack([x[1] for x in real])
@@ -201,6 +178,18 @@ def viz(args):
     real_points = pca.transform(real_points)
     bound_points = pca.transform(bound_points)
 
+    if regressed is not None:
+        bound_reg_points = np.stack([x[0] for x in boundary_reg])
+        bound_reg_labels = np.stack([x[1] for x in boundary_reg])
+        bound_reg_points = pca.transform(bound_reg_points)
+
+    if w1_net is not None:
+        bound_w1_points = np.stack([x[0] for x in boundary_w1])
+        bound_w1_labels = np.stack([x[1] for x in boundary_w1])
+        bound_w1_points = pca.transform(bound_w1_points)
+
+    # do original
+
     if args.nn:
 
         xmin, ymin = real_points.min(0)
@@ -214,7 +203,7 @@ def viz(args):
         points = np.stack(points)
         knn = KNN()
 
-        print('Starting KNN')
+        print('Starting KNN - original')
         knn.fit(bound_points, (bound_labels > 0.5))
         background = knn.predict(points)
         plt.scatter(points[:, 0], points[:, 1], c=background, alpha=0.2)
@@ -224,13 +213,93 @@ def viz(args):
 
     plt.scatter(real_points[:, 0], real_points[:, 1], c=real_labels, linewidths=1, edgecolors='black')
 
-    if args.save:
-        plt.savefig(f'{args.save}.png')
-    else:
-        plt.show()
+    plt.savefig(f'{args.save}_original.png')
+
+    # optionally do regressed
+    if regressed is not None:
+
+        if args.nn:
+
+            knn = KNN()
+
+            print('Starting KNN - regressed')
+            knn.fit(bound_reg_points, (bound_reg_labels > 0.5))
+            background = knn.predict(points)
+            plt.scatter(points[:, 0], points[:, 1], c=background, alpha=0.2)
+
+        else:
+            plt.scatter(bound_reg_points[:, 0], bound_reg_points[:, 1], c=bound_labels, s=300, alpha=0.2)
+
+        plt.scatter(real_points[:, 0], real_points[:, 1], c=real_labels, linewidths=1, edgecolors='black')
+
+    plt.savefig(f'{args.save}_regressed.png')
+
+    # optionally do w1
+    if w1_net is not None:
+
+        if args.nn:
+
+            knn = KNN()
+
+            print('Starting KNN - w1')
+            knn.fit(bound_w1_points, (bound_w1_labels > 0.5))
+            background = knn.predict(points)
+            plt.scatter(points[:, 0], points[:, 1], c=background, alpha=0.2)
+
+        else:
+            plt.scatter(bound_w1_points[:, 0], bound_w1_points[:, 1], c=bound_labels, s=300, alpha=0.2)
+
+        plt.scatter(real_points[:, 0], real_points[:, 1], c=real_labels, linewidths=1, edgecolors='black')
+
+    plt.savefig(f'{args.save}_w1.png')
 
 
 if __name__ == '__main__':
 
     args = parser.parse_args()
-    viz(args)
+
+    #### LOAD NET ####
+    net = models[args.model](bias=True)
+
+    with open(args.model_path, 'rb') as f:
+        d = pickle.load(f)
+        net.load_state_dict(d['weights'])
+        num_images = len(d['wrong_i'])
+
+    print(f'Trained with {num_images} images')
+    net = net.cuda()
+
+    #### REGRESS NET ####
+    regressed_net = None
+    if args.regressor:
+        # init regressor
+        regressor = regressors[args.regressor](bn=False)
+        print(regressor)
+        regressor.load_state_dict(
+                torch.load(args.regressor_path))
+
+        # this will store regressed version
+        regressed_net = models[args.model](bias=True)
+        
+        # run through regression
+        w0 = [Variable(x.unsqueeze(0)) for x in utils.dict_to_tensor_list(net.state_dict())]
+        if torch.cuda.is_available():
+            regressed_net = regressed_net.cuda()
+            regressor = regressor.cuda()
+            w0 = [x.cuda() for x in w0]
+        w1 = regressor(w0)
+        w1 = [x.data.squeeze(0) for x in w1]
+        
+        # copy to new identical net
+        utils.copy_tensor_list_to_net(w1, regressed_net)
+
+    #### W1 NET ####
+    w1_net = None
+    if args.w1_path:
+        w1_net = models[args.model](bias=True)
+        with open(args.w1_path, 'rb') as f:
+            d = pickle.load(f)
+            w1_net.load_state_dict(d['weights'])
+        w1_net = w1_net.cuda()
+
+    viz(net, args, regressed_net, w1_net)
