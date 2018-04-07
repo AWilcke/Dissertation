@@ -9,8 +9,11 @@ from models import MLP_100
 import pickle
 from tqdm import tqdm
 from sklearn.decomposition import PCA
+from sklearn.neighbors import KNeighborsClassifier as KNN
 from matplotlib import pyplot as plt
+import numpy as np
 
+plt.rcParams['image.cmap'] = 'plasma'
 
 parser = ArgumentParser()
 parser.add_argument('--mnist')
@@ -23,6 +26,8 @@ parser.add_argument('--label', type=int,
 parser.add_argument('--model_path')
 parser.add_argument('--gradient', action='store_true')
 parser.add_argument('--boundary', action='store_true')
+parser.add_argument('--nn', action='store_true')
+parser.add_argument('--save', type=str)
 
 
 def follow_gradient(img, net, alpha):
@@ -171,10 +176,7 @@ def model_decision(net, args):
     return real, boundary
 
 
-if __name__ == '__main__':
-
-    args = parser.parse_args()
-
+def viz(args):
     net = MLP_100()
 
     with open(args.model_path, 'rb') as f:
@@ -186,19 +188,49 @@ if __name__ == '__main__':
 
     real, boundary = model_decision(net, args)
 
-    real_points = [x[0] for x in real]
-    real_labels = [x[1] for x in real]
+    real_points = np.stack([x[0] for x in real])
+    real_labels = np.stack([x[1] for x in real])
 
-    bound_points = [x[0] for x in boundary]
-    bound_labels = [x[1] for x in boundary]
+    bound_points = np.stack([x[0] for x in boundary])
+    bound_labels = np.stack([x[1] for x in boundary])
 
-    pca = PCA()
+    pca = PCA(n_components=2)
 
     pca.fit(real_points)
 
     real_points = pca.transform(real_points)
     bound_points = pca.transform(bound_points)
 
-    plt.scatter(bound_points[:, 0], bound_points[:, 1], c=bound_labels, s=300, alpha=0.2)
+    if args.nn:
+
+        xmin, ymin = real_points.min(0)
+        xmax, ymax = real_points.max(0)
+
+        points = []
+        for i in np.arange(xmin, xmax, 0.05):
+            for j in np.arange(ymin, ymax, 0.05):
+                points.append([i, j])
+
+        points = np.stack(points)
+        knn = KNN()
+
+        print('Starting KNN')
+        knn.fit(bound_points, (bound_labels > 0.5))
+        background = knn.predict(points)
+        plt.scatter(points[:, 0], points[:, 1], c=background, alpha=0.2)
+
+    else:
+        plt.scatter(bound_points[:, 0], bound_points[:, 1], c=bound_labels, s=300, alpha=0.2)
+
     plt.scatter(real_points[:, 0], real_points[:, 1], c=real_labels, linewidths=1, edgecolors='black')
-    plt.show()
+
+    if args.save:
+        plt.savefig(f'{args.save}.png')
+    else:
+        plt.show()
+
+
+if __name__ == '__main__':
+
+    args = parser.parse_args()
+    viz(args)
