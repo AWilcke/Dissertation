@@ -171,22 +171,49 @@ class MLP_Regressor(BaseRegressor):
 
 class ConvRegressor(BaseRegressor):
     
-    def __init__(self, filter_size=1, *args, **kwargs):
+    def __init__(self, filter_size=1, dropout=0, bn=False, *args, **kwargs):
 
         super().__init__()
         
         assert filter_size % 2 != 0, "Filter size must be odd to ensure size remains same"
+        
+        self.filter_size = filter_size
+        self.padding = filter_size // 2
+        self.dropout = dropout
+        self.bn = bn
 
-        padding = filter_size // 2
-
-        self.layer_1 = nn.Conv1d(100, 100, filter_size, padding=padding)
-        self.layer_2 = nn.Conv1d(100, 100, filter_size, padding=padding)
-        self.layer_3 = nn.Sequential(
+        self.layer0 = self._make_conv()
+        self.layer1 = self._make_conv()
+        self.layer2 = nn.Sequential(
                 nn.Linear(101,101),
                 nn.ReLU(),
                 nn.Linear(101,101),
                 )
 
+    def _make_conv(self):
+
+        if self.bn:
+            return nn.Sequential(
+                    nn.Conv1d(100, 100, self.filter_size, padding=self.padding),
+                    nn.BatchNorm1d(100),
+                    nn.Dropout(self.dropout),
+                    nn.LeakyReLU(0.1),
+                    nn.Conv1d(100, 100, self.filter_size, padding=self.padding),
+                    )
+        else:
+            return nn.Sequential(
+                    nn.Conv1d(100, 100, self.filter_size, padding=self.padding),
+                    nn.Dropout(self.dropout),
+                    nn.LeakyReLU(0.1),
+                    nn.Conv1d(100, 100, self.filter_size, padding=self.padding),
+                    )
+
+
+    def layers(self):
+        return [self.layer0,
+                self.layer1,
+                self.layer2,
+                ]
 
     def forward(self, x):
         return [self.layers()[i](l) for i, l in enumerate(x)]
@@ -308,7 +335,7 @@ class LargeConvNetRegressor(ConvNetRegressor):
 
 class ConvConvNetRegressor(ConvNetRegressor):
 
-    def __init__(self, bias=[True]*4, dropout=0, activation='lrelu', bn=True, *args, **kwargs):
+    def __init__(self, bias=[False, False, True, True], dropout=0, activation='lrelu', bn=True, *args, **kwargs):
         super().__init__(bias=bias, dropout=dropout, activation=activation, bn=bn)
 
         # overwrite conv layer regressors
@@ -375,12 +402,14 @@ class ConvConvNetRegressor(ConvNetRegressor):
 
 
 class VAE(nn.Module):
-    def __init__(self, input_dim):
+    def __init__(self, input_dim, h1=0.75, h2=0.5, dropout=0):
 
         super().__init__()
 
-        self.h1 = int(0.75 * input_dim)
-        self.h2 = int(0.5 * input_dim)
+        self.h1 = int(h1 * input_dim)
+        self.h2 = int(h2 * input_dim)
+
+        self.dropout = nn.Dropout(dropout)
 
         self.fc1 = nn.Linear(input_dim, self.h1)
         self.fc21 = nn.Linear(self.h1, self.h2)
@@ -391,11 +420,12 @@ class VAE(nn.Module):
         self.decoder = nn.Sequential(
                 nn.Linear(self.h2, self.h1),
                 self.lrelu,
+                self.dropout,
                 nn.Linear(self.h1, input_dim)
                 )
 
     def encoder(self, x):
-        y1 = self.lrelu(self.fc1(x))
+        y1 = self.dropout(self.lrelu(self.fc1(x)))
         return self.fc21(y1), self.fc22(y1)
 
     def reparametrize(self, mu, logvar):
@@ -426,18 +456,20 @@ class VAE(nn.Module):
 
 class VAEConvRegressor(ConvNetRegressor):
 
-    def __init__(self, bias=[True]*4, regressor=False, *args, **kwargs):
+    def __init__(self, bias=[True]*4, regressor=False, h1=0.75, h2=0.5, dropout=0,*args, **kwargs):
         '''
         regressor :: bool : whether the VAE is being trained as a regressor
                             or as a VAE. In the former case, will only output
                             regressed values, not mu and logvar.
+        h1, h2 :: float : scaling factor by which to reduce the input for hidden layers 1 and 2
         '''
-
-        super().__init__(bias=bias)
+        self.h1 = h1
+        self.h2 = h2
+        super().__init__(bias=bias, dropout=dropout)
         self.regressor = regressor
 
     def _make_layer(self, input_dim):
-        return VAE(input_dim)
+        return VAE(input_dim, h1=self.h1, h2=self.h2, dropout=self.dropout)
 
     def forward(self, x):
         out = []

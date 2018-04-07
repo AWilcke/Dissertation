@@ -46,7 +46,7 @@ def train(args):
         print("Using CPU")
         n_gpu = 0
 
-    net = model_dict[args.net]()
+    net = model_dict[args.net](h1=args.h1, h2=args.h2)
     print(net)
 
     start_epoch = 0
@@ -250,6 +250,8 @@ if __name__ == "__main__":
     parser.add_argument('--lr', type=float, default=1e-3)
     parser.add_argument('--momentum', type=float, default=0.9)
     parser.add_argument('--betas', nargs='+', type=float, default=[0.9, 0.999])
+    parser.add_argument('--h1', type=float, default=0.75)
+    parser.add_argument('--h2', type=float, default=0.5)
 
     # logging args
     parser.add_argument('--write_every_n', type=int, default=500)

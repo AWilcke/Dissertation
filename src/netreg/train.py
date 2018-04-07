@@ -13,6 +13,7 @@ import os
 import scoring
 from tqdm import tqdm
 from pathlib import Path
+import pickle
 
 BATCH_SIZE = 64 # do not set to 1, as BatchNorm won't work
 NUM_EPOCHS = 500
@@ -63,15 +64,33 @@ def train(args):
             n_gpu=n_gpu, 
             filter_size=args.filter_size,
             activation=args.activation,
-            bn=args.bn)
+            bn=args.bn,
+            h1=args.h1,
+            h2=args.h2,
+            )
     print(net)
     print('##########################################')
     print(net.layers())
     
     # start with pretrained vae
     if args.net == 'vae':
-        net.load_state_dict(torch.load(
-            Path('logs/ckpt/vae/136.ckpt')))
+        # d = torch.load(Path('logs/ckpt/vae/136.ckpt'))
+        d = torch.load(Path('logs/ckpt/vae_400/344.ckpt'))
+        d2 = {}
+        for k, v in d.items():
+            if 'decoder.2' in k:
+                lst = k.split('.')
+                num = lst[-2]
+                lst[-2] = str(int(num) + 1)
+                new_k = '.'.join(lst)
+                d2[new_k] = v
+            else:
+                d2[k] = v
+        d = d2
+
+        net.load_state_dict(d)
+        net.regressor = True
+
     # layer-wise init - needed for non-square identity init
     else:
         for layer in net.layers():
@@ -186,11 +205,12 @@ def train(args):
 
             # get validation metrics for G/C
             
-            if global_step % args.validate_every_n == 0:
+            if global_step % args.validate_every_n == 0 and global_step != 0:
 
                 scoring.validation_metrics(net, val_dataloader, writer, global_step)
 
-            if global_step % args.classif_every_n == 0 and global_step != 0:
+            if global_step % args.classif_every_n == 0: # and global_step != 0:
+                print('Checking performance')
 
                 scoring.check_performance(net, val_dataloader, writer, args, global_step)
 
@@ -236,6 +256,8 @@ if __name__ == "__main__":
     parser.add_argument('--dropout', type=float, default=0)
     parser.add_argument('--activation', choices=['lrelu', 'tanh'], default='lrelu')
     parser.add_argument('--bn', action='store_true')
+    parser.add_argument('--h1', type=float, default=0.75)
+    parser.add_argument('--h2', type=float, default=0.5)
 
     # training args
     parser.add_argument('--optimiser', type=str, default='sgd')
