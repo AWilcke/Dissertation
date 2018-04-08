@@ -6,7 +6,8 @@ from dataset import MNISTbyClass
 from torch.utils.data import DataLoader
 from argparse import ArgumentParser
 from models import MLP_100, ConvNet, \
-        ConvNetRegressor
+        ConvNetRegressor, ConvConvNetRegressor, \
+        VAEConvRegressor, MLP_Regressor
 import pickle
 from tqdm import tqdm
 from sklearn.decomposition import PCA
@@ -25,6 +26,9 @@ models = {
 
 regressors = {
         'convreg': ConvNetRegressor,
+        'convconv': ConvConvNetRegressor,
+        'vae': VAEConvRegressor,
+        'mlp': MLP_Regressor,
         }
 
 parser = ArgumentParser()
@@ -37,6 +41,10 @@ parser.add_argument('--val_labels', nargs='+', type=int,
 parser.add_argument('--index')
 parser.add_argument('--label', type=int,
         help='label of current model')
+
+parser.add_argument('--no_bias', action='store_true')
+parser.add_argument('--h1', type=float, default=0.75)
+parser.add_argument('--h2', type=float, default=0.5)
 
 parser.add_argument('--model_path')
 parser.add_argument('--regressor_path')
@@ -232,7 +240,7 @@ def viz(net, args, regressed=None, w1_net=None):
 
         plt.scatter(real_points[:, 0], real_points[:, 1], c=real_labels, linewidths=1, edgecolors='black')
 
-    plt.savefig(f'{args.save}_regressed.png')
+        plt.savefig(f'{args.save}_regressed.png')
 
     # optionally do w1
     if w1_net is not None:
@@ -251,7 +259,7 @@ def viz(net, args, regressed=None, w1_net=None):
 
         plt.scatter(real_points[:, 0], real_points[:, 1], c=real_labels, linewidths=1, edgecolors='black')
 
-    plt.savefig(f'{args.save}_w1.png')
+        plt.savefig(f'{args.save}_w1.png')
 
 
 if __name__ == '__main__':
@@ -259,7 +267,8 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     #### LOAD NET ####
-    net = models[args.model](bias=True)
+    net = models[args.model](bias=not args.no_bias)
+    # print(net)
 
     with open(args.model_path, 'rb') as f:
         d = pickle.load(f)
@@ -273,13 +282,18 @@ if __name__ == '__main__':
     regressed_net = None
     if args.regressor:
         # init regressor
-        regressor = regressors[args.regressor](bn=False)
-        print(regressor)
+        regressor = regressors[args.regressor](
+                bn=False, 
+                regressor=True,
+                h1=args.h1,
+                h2=args.h2
+                )
+        # print(regressor)
         regressor.load_state_dict(
                 torch.load(args.regressor_path))
 
         # this will store regressed version
-        regressed_net = models[args.model](bias=True)
+        regressed_net = models[args.model](bias=not args.no_bias)
         
         # run through regression
         w0 = [Variable(x.unsqueeze(0)) for x in utils.dict_to_tensor_list(net.state_dict())]
@@ -289,14 +303,14 @@ if __name__ == '__main__':
             w0 = [x.cuda() for x in w0]
         w1 = regressor(w0)
         w1 = [x.data.squeeze(0) for x in w1]
-        
+
         # copy to new identical net
         utils.copy_tensor_list_to_net(w1, regressed_net)
 
     #### W1 NET ####
     w1_net = None
     if args.w1_path:
-        w1_net = models[args.model](bias=True)
+        w1_net = models[args.model](bias=not args.no_bias)
         with open(args.w1_path, 'rb') as f:
             d = pickle.load(f)
             w1_net.load_state_dict(d['weights'])

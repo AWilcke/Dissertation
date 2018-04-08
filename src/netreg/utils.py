@@ -108,9 +108,22 @@ def dict_to_tensor_list(state_dict):
 
 def copy_tensor_list_to_net(tensor_list, net):
 
-    for i, item in enumerate(net.state_dict().values()):
-        current = tensor_list[i//2]
-        part = current[:,:-1] if i % 2 == 0 else current[:,-1]
-        item.copy_(part)
+    j = 0
+    for i, (key, item) in enumerate(net.state_dict().items()):
+
+        current = tensor_list[j]
+        
+        # shapes match, just copy
+        if current.shape == item.shape:
+            item.copy_(current)
+        # if not, must be because bias is in last channel
+        elif 'weight' in key:
+            item.copy_(current[:,:-1])
+            j -= 1
+        else:
+            item.copy_(current[:,-1])
+
+
+        j += 1
 
     return net

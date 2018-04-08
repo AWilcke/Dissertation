@@ -340,9 +340,12 @@ class ConvConvNetRegressor(ConvNetRegressor):
     def __init__(self, bias=[False, False, True, True], dropout=0, activation='lrelu', bn=True, *args, **kwargs):
         super().__init__(bias=bias, dropout=dropout, activation=activation, bn=bn)
 
+        self.drop3 = [nn.Dropout3d(dropout)] if dropout else []
+
         # overwrite conv layer regressors
         self.layer_1 = self._make_conv_layer(1, 5)
         self.layer_2 = self._make_conv_layer(5, 10)
+
 
     def _make_conv_layer(self, input_dim, output_dim, kernel_size=3):
 
@@ -361,13 +364,15 @@ class ConvConvNetRegressor(ConvNetRegressor):
                         padding=(pad_in, pad_hw, pad_hw)),
                     nn.BatchNorm3d(output_dim),
                     self.activation,
-                    nn.Dropout(self.dropout),
+                    # nn.Dropout(self.dropout),
+                    *self.drop3,
                     nn.Conv3d(output_dim, output_dim, 
                         (kernel_in, kernel_size, kernel_size),
                         padding=(pad_in, pad_hw, pad_hw)),
                     nn.BatchNorm3d(output_dim),
                     self.activation,
-                    nn.Dropout(self.dropout),
+                    # nn.Dropout(self.dropout),
+                    *self.drop3,
                     nn.Conv3d(output_dim, output_dim, 
                         (kernel_in, kernel_size, kernel_size),
                         padding=(pad_in, pad_hw, pad_hw)),
@@ -378,12 +383,14 @@ class ConvConvNetRegressor(ConvNetRegressor):
                         (kernel_in, kernel_size, kernel_size),
                         padding=(pad_in, pad_hw, pad_hw)),
                     self.activation,
-                    nn.Dropout(self.dropout),
+                    # nn.Dropout(self.dropout),
+                    *self.drop3,
                     nn.Conv3d(output_dim, output_dim, 
                         (kernel_in, kernel_size, kernel_size),
                         padding=(pad_in, pad_hw, pad_hw)),
                     self.activation,
-                    nn.Dropout(self.dropout),
+                    # nn.Dropout(self.dropout),
+                    *self.drop3,
                     nn.Conv3d(output_dim, output_dim, 
                         (kernel_in, kernel_size, kernel_size),
                         padding=(pad_in, pad_hw, pad_hw)),
@@ -411,6 +418,7 @@ class VAE(nn.Module):
         self.h1 = int(h1 * input_dim)
         self.h2 = int(h2 * input_dim)
 
+        # self.dropout = [nn.Dropout(dropout)] if dropout else []
         self.dropout = nn.Dropout(dropout)
 
         self.fc1 = nn.Linear(input_dim, self.h1)
@@ -467,11 +475,12 @@ class VAEConvRegressor(ConvNetRegressor):
         '''
         self.h1 = h1
         self.h2 = h2
-        super().__init__(bias=bias, dropout=dropout)
+        self.drop = dropout  # need different kind of dropout for retro-comp
+        super().__init__(bias=bias)
         self.regressor = regressor
 
     def _make_layer(self, input_dim):
-        return VAE(input_dim, h1=self.h1, h2=self.h2, dropout=self.dropout)
+        return VAE(input_dim, h1=self.h1, h2=self.h2, dropout=self.drop)
 
     def forward(self, x):
         out = []
