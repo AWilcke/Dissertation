@@ -107,6 +107,7 @@ class GradCAM(_PropagationBase):
 
         return gcam.cpu().numpy()
 
+
 def save_gradcam(filename, gcam, raw_image):
     h, w = raw_image.size
     gcam = cv2.resize(gcam, (h, w))
@@ -115,17 +116,23 @@ def save_gradcam(filename, gcam, raw_image):
     gcam = gcam / gcam.max() * 255.0
     cv2.imwrite(filename, np.uint8(gcam))
 
+def save_gradient(filename, data):
+    data -= data.min()
+    data /= data.max()
+    data *= 255.0
+    cv2.imwrite(filename, np.uint8(data))
+
 def preprocess_image(img):
-        means=[0.485, 0.456, 0.406]
-        stds=[0.229, 0.224, 0.225]
+        means = [0.485, 0.456, 0.406]
+        stds = [0.229, 0.224, 0.225]
 
         preprocessed_img = transforms.Compose([
-            transforms.Resize((224,224)),
+            transforms.Resize((224, 224)),
             transforms.ToTensor(),
-            transforms.Normalize(mean=means,
+            transforms.Normalize(
+                mean=means,
                 std=stds)
             ])(img)
-
 
         preprocessed_img.unsqueeze_(0)
         var = Variable(preprocessed_img, requires_grad=True)
@@ -143,17 +150,33 @@ def get_args():
 
     return args
 
-
 def run(net, args):
     raw_img = Image.open(args.image_path)
     img = preprocess_image(raw_img)
 
+    gbp = GuidedBackPropagation(model=net)
     gcam = GradCAM(net)
+
     prob = gcam.forward(img)
+    gbp.forward(img)
+
     print(f'Probability: {prob.data[0]*100:.1f}%')
+
     gcam.backward()
-    output = gcam.generate(target_layer=args.target_layer)
-    save_gradcam('gcam.png', output, raw_img)
+    region = gcam.generate(args.target_layer)
+    save_gradcam('gcam.png', region, raw_img)
+
+    gbp.backward()
+    feature = gbp.generate()
+
+    h, w = raw_img.size
+    region = cv2.resize(region, (h, w))[..., np.newaxis]
+    feature = cv2.resize(feature, (h, w))
+
+    print(region.shape, feature.shape)
+    output = feature * region
+
+    save_gradient('gcpcam.png', output)
 
 
 if __name__ == '__main__':
