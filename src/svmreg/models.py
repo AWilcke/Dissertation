@@ -18,10 +18,15 @@ class LayerNorm(nn.Module):
 
 class SVMRegressor(nn.Module):
 
-    def __init__(self, dropout=False, slope=0.01, square_hinge=False, n_gpu=1, tanh=False):
+    def __init__(self, dropout=False, slope=0.01, square_hinge=False, n_gpu=1, tanh=False,
+            l2=True, hinge=True):
         super(SVMRegressor, self).__init__()
         self.square_hinge = square_hinge
         self.ngpu = n_gpu
+
+        # which losses to train with
+        self.l2 = l2
+        self.hinge = hinge
 
         # optional dropout param
         d = [nn.Dropout()] if dropout else []
@@ -51,27 +56,33 @@ class SVMRegressor(nn.Module):
         return output
     
     def loss(self, regressed_w, w1, train):
-        l2_loss = .5 * torch.mean(torch.norm(w1.sub(regressed_w), 2, 1).pow(2))
-
+        # init
+        l2_loss = Variable(torch.zeros(1))
         hinge_loss = Variable(torch.zeros(1))
+
         if torch.cuda.is_available():
+            l2_loss = l2_loss.cuda()
             hinge_loss = hinge_loss.cuda()
 
-        # calculate summed hinge loss of each regressed svm
-        for i in range(regressed_w.data.shape[0]):
-            hinge_vector = torch.clamp(
-                    1 - torch.matmul(
-                        regressed_w[i][:-1], train[i].transpose(0,1))
-                    .add(regressed_w[i][-1]),
-                    min=0)
+        if self.l2:
+            l2_loss = .5 * torch.mean(torch.norm(w1.sub(regressed_w), 2, 1).pow(2))
 
-            # square the hinge loss if requested
-            hinge_vector = torch.clamp(hinge_vector, max=100).pow(2) if self.square_hinge else hinge_vector
+        if self.hinge:
+            # calculate summed hinge loss of each regressed svm
+            for i in range(regressed_w.data.shape[0]):
+                hinge_vector = torch.clamp(
+                        1 - torch.matmul(
+                            regressed_w[i][:-1], train[i].transpose(0,1))
+                        .add(regressed_w[i][-1]),
+                        min=0)
 
-            hinge_loss += torch.mean(hinge_vector)
-        
-        # average
-        hinge_loss.div_(regressed_w.data.shape[0])
+                # square the hinge loss if requested
+                hinge_vector = torch.clamp(hinge_vector, max=100).pow(2) if self.square_hinge else hinge_vector
+
+                hinge_loss += torch.mean(hinge_vector)
+            
+            # average
+            hinge_loss.div_(regressed_w.data.shape[0])
 
         return l2_loss, hinge_loss
 

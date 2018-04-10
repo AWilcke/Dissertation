@@ -49,6 +49,18 @@ def dropout_train(m):
     if classname.find('Dropout') != -1:
         m.train()
 
+def tensor_to_net(tensor, net):
+    weights = tensor[:-1]
+    bias = tensor[-1:]
+
+    for key, item in net.state_dict().items():
+        if 'weight' in key:
+            item.copy_(weights)
+        elif 'bias' in key:
+            item.copy_(bias)
+
+    return net
+
 def validation_metrics(net, val_dataloader, writer, gen_iterations):
 
     # save computation

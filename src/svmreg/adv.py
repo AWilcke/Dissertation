@@ -13,6 +13,7 @@ import utils
 from utils import collate_fn, weights_init
 import resource
 import losses
+from tqdm import tqdm
 
 BATCH_SIZE = 64 # do not set to 1, as BatchNorm won't work
 NUM_EPOCHS = 150000
@@ -28,10 +29,12 @@ model_dict = {
 
 def train(args):
     # training datasets
+    print('Creating train dataset')
     dataset = SVMDataset(args.w0, args.w1, args.feature, split='train')
     dataloader = DataLoader(dataset, batch_size=BATCH_SIZE,
             shuffle=True, num_workers=0, collate_fn=collate_fn, drop_last=True)
     # validation datasets
+    print('Creating val dataset')
     val_dataset = SVMDataset(args.w0, args.w1, args.feature, split='val')
     val_dataloader = DataLoader(val_dataset, batch_size=BATCH_SIZE,
             shuffle=False, num_workers=0, collate_fn=collate_fn, drop_last=True)
@@ -54,7 +57,10 @@ def train(args):
             slope=args.slope,
             dropout=args.dropout,
             square_hinge=args.square_hinge, 
-            n_gpu=n_gpu)
+            n_gpu=n_gpu,
+            hinge=not args.no_hinge,
+            l2=not args.no_l2,
+            )
     net.apply(weights_init)
 
     critic = model_dict[args.critic_name](n_gpu=n_gpu, gp=args.gp, dropout=args.no_dropout_C)
@@ -64,7 +70,7 @@ def train(args):
         gradient_penalty = losses.wgan_gradient_penalty
         gen_loss = losses.wgan_gen_loss
         critic_loss = losses.wgan_critic_loss
-        extra = None# no extra variable needed for wgan
+        extra = torch.zeros(1)
         print("Using WGAN")
     elif args.type == 'dragan':
         gradient_penalty = losses.dragan_gradient_penalty
@@ -153,141 +159,150 @@ def train(args):
 
     extra = Variable(extra, requires_grad=args.type=="fisher")
 
-    while gen_iterations < NUM_EPOCHS:
+    with tqdm(total=NUM_EPOCHS, position=0) as progress_gen:
 
-        data_iter = iter(dataloader)
-        i = 0
+        progress_gen.update(gen_iterations) #  update if resuming
 
-        while i < len(dataloader):
+        while gen_iterations < NUM_EPOCHS:
 
-            #####################
-            ### Update Critic ###
-            #####################
+            data_iter = iter(dataloader)
+            i = 0
 
-            for p in critic.parameters():
-                p.requires_grad = True
+            with tqdm(total=len(dataloader), position=1) as progress_data:
 
-            if gen_iterations < 25:
-                critic_iterations = 100
-            else:
-                critic_iterations = args.critic_iters
+                while i < len(dataloader):
 
-            j = 0
-            while j < critic_iterations and i < len(dataloader):
-                j += 1
-                samples = data_iter.next()
-                i+=1
-                
-                w0 = Variable(samples['w0'].float(), volatile=True)
-                w1 = Variable(samples['w1'].float())
+                    #####################
+                    ### Update Critic ###
+                    #####################
 
-                if torch.cuda.is_available():
-                    w0 = w0.cuda()
-                    w1 = w1.cuda()
+                    for p in critic.parameters():
+                        p.requires_grad = True
 
-                optimizer_c.zero_grad()
+                    if gen_iterations < 25:
+                        critic_iterations = 100
+                    else:
+                        critic_iterations = args.critic_iters
 
-                fake_w1 = Variable(net(w0).data)
+                    j = 0
+                    while j < critic_iterations and i < len(dataloader):
+                        j += 1
+                        samples = data_iter.next()
+                        progress_data.update(1)
+                        i+=1
+                        
+                        w0 = Variable(samples['w0'].float(), volatile=True)
+                        w1 = Variable(samples['w1'].float())
 
-                err_C = critic_loss(critic, w1, fake_w1, one, mone, args, extra)
+                        if torch.cuda.is_available():
+                            w0 = w0.cuda()
+                            w1 = w1.cuda()
 
-                # apply gradient penalty
-                if args.gp:
-                    grad_penalty = gradient_penalty(critic, w1.data, fake_w1.data)
-                    grad_penalty.backward(args.lambd * one)
+                        optimizer_c.zero_grad()
 
-                    log_dic['grad'] += grad_penalty.data[0]
+                        fake_w1 = Variable(net(w0).data)
 
-                optimizer_c.step()
+                        err_C = critic_loss(critic, w1, fake_w1, one, mone, args, extra)
 
-                log_dic['C'] += err_C.data[0]
-                log_dic['C_count'] += 1
+                        # apply gradient penalty
+                        if args.gp:
+                            grad_penalty = gradient_penalty(critic, w1.data, fake_w1.data)
+                            grad_penalty.backward(args.lambd * one)
 
-                print("ERR_C: {:.3f}".format(err_C.data[0]))
+                            log_dic['grad'] += grad_penalty.data[0]
 
-            ########################
-            ### Update Regressor ###
-            ########################
+                        optimizer_c.step()
 
-            for p in critic.parameters():
-                p.requires_grad = False
-            
-            if i < len(dataloader):
+                        log_dic['C'] += err_C.data[0]
+                        log_dic['C_count'] += 1
 
-                samples = data_iter.next()
-                i+=1
+                        # print("ERR_C: {:.3f}".format(err_C.data[0]))
 
-                w0 = Variable(samples['w0'].float())
-                w1 = Variable(samples['w1'].float())
-                train = [Variable(t.float()) for t in samples['train']]
+                    ########################
+                    ### Update Regressor ###
+                    ########################
 
-                if torch.cuda.is_available():
-                    w0 = w0.cuda()
-                    w1 = w1.cuda()
-                    train = [t.cuda() for t in train]
+                    for p in critic.parameters():
+                        p.requires_grad = False
+                    
+                    if i < len(dataloader):
 
-                optimizer.zero_grad()
-                
-                regressed_w = net(w0) # regressed_w[-1] is the intercept
+                        samples = data_iter.next()
+                        progress_data.update(1)
+                        i+=1
 
-                # train with critic loss
-                critic_out = critic(regressed_w)
+                        w0 = Variable(samples['w0'].float())
+                        w1 = Variable(samples['w1'].float())
+                        train = [Variable(t.float()) for t in samples['train']]
 
-                err_G = gen_loss(critic_out)
+                        if torch.cuda.is_available():
+                            w0 = w0.cuda()
+                            w1 = w1.cuda()
+                            train = [t.cuda() for t in train]
 
-                # train with hinge loss
-                l2_loss, hinge_loss = net.loss(regressed_w, w1, train)
+                        optimizer.zero_grad()
+                        
+                        regressed_w = net(w0) # regressed_w[-1] is the intercept
 
-                # training a pure gan
-                if args.pure_gan:
-                    total_loss = err_G
-                else:
-                    total_loss = args.alpha * err_G + args.delta * (hinge_loss + l2_loss)
+                        # train with critic loss
+                        critic_out = critic(regressed_w)
 
-                total_loss.backward()
+                        err_G = gen_loss(critic_out)
 
-                print("ERR_G: {:.3f}".format(err_G.data[0]))
-                optimizer.step()
+                        # train with hinge loss
+                        l2_loss, hinge_loss = net.loss(regressed_w, w1, train)
 
-                log_dic['G'] += err_G.data[0]
-                log_dic['hinge'] += hinge_loss.data[0]
-                log_dic['l2'] += l2_loss.data[0]
+                        # training a pure gan
+                        if args.pure_gan:
+                            total_loss = err_G
+                        else:
+                            total_loss = args.alpha * err_G + args.delta * (hinge_loss + l2_loss)
 
-                gen_iterations += 1
-                log_dic['G_count'] += 1
+                        total_loss.backward()
 
-            ########################
-            ####### LOGGING ########
-            ########################
+                        # print("ERR_G: {:.3f}".format(err_G.data[0]))
+                        optimizer.step()
 
-            # write to tensorboard
-            if gen_iterations % args.write_every_n == 0:
-                log_dic = utils.log_to_tensorboard(log_dic,
-                    optimizer.state_dict()['param_groups'][0]['lr'],
-                    args.gp,
-                    writer,
-                    gen_iterations)
+                        log_dic['G'] += err_G.data[0]
+                        log_dic['hinge'] += hinge_loss.data[0]
+                        log_dic['l2'] += l2_loss.data[0]
+
+                        gen_iterations += 1
+                        progress_gen.update(1)
+                        log_dic['G_count'] += 1
+
+                    ########################
+                    ####### LOGGING ########
+                    ########################
+
+                    # write to tensorboard
+                    if gen_iterations % args.write_every_n == 0:
+                        log_dic = utils.log_to_tensorboard(log_dic,
+                            optimizer.state_dict()['param_groups'][0]['lr'],
+                            args.gp,
+                            writer,
+                            gen_iterations)
 
 
-            # save model
-            if gen_iterations % args.save_every_n == 0:
+                    # save model
+                    if gen_iterations % args.save_every_n == 0:
 
-                utils.save_model(net, critic, args, gen_iterations)
+                        utils.save_model(net, critic, args, gen_iterations)
 
-            ########################
-            ###### VALIDATION ######
-            ########################
+                    ########################
+                    ###### VALIDATION ######
+                    ########################
 
-            # get validation metrics for G/C
-            
-            if gen_iterations % args.validate_every_n == 0:
+                    # get validation metrics for G/C
+                    
+                    if gen_iterations % args.validate_every_n == 0:
 
-                utils.validation_metrics(net, val_dataloader, writer, gen_iterations)
+                        utils.validation_metrics(net, val_dataloader, writer, gen_iterations)
 
-            if gen_iterations % args.classif_every_n == 0:
+                    if gen_iterations % args.classif_every_n == 0:
 
-                utils.check_performance(net, val_dataset, y, writer, args, gen_iterations)
-
+                        utils.check_performance(net, val_dataset, y, writer, args, gen_iterations)
+        
 if __name__ == "__main__":
     
     # trying to prevent ancdata error
@@ -327,6 +342,10 @@ if __name__ == "__main__":
             help='adverserial loss weight')
     parser.add_argument('--delta', type=float, default=1,
             help='hinge+l2 loss weight')
+
+    parser.add_argument('--no_hinge', action='store_true')
+    parser.add_argument('--no_l2', action='store_true')
+
     parser.add_argument('--lambda', dest='lambd', type=float, default=10,
             help='gradient penalty weight for wgan-gp')
     parser.add_argument('--rho', type=float, default=1e-6, 

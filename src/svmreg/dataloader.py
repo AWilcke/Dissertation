@@ -5,6 +5,8 @@ from torchvision import transforms
 from PIL import Image
 import scipy.io as sio
 import pickle
+from pathlib import Path
+import numpy as np
 
 class BasicDataset(Dataset):
 
@@ -47,6 +49,37 @@ class BasicDataset(Dataset):
         image = self.preprocess(image)
         sample = {'image' : image, 'label' : self.labels[idx]}
         return sample
+
+class FeatureDataset(Dataset):
+
+    def __init__(self, features_file, labels_file, label, n, val_labels):
+
+        with open(labels_file,'rb') as f:
+            self.labels = pickle.load(f)
+
+        with open(features_file,'rb') as f:
+            self.features = pickle.load(f)
+        
+        # get all OTHER val indexes
+        val_indexes = []
+        for i, lab in enumerate(self.labels):
+            if lab in val_labels and lab != label:
+                val_indexes.append(i)
+
+        lab_indexes = np.where(self.labels == label)[0]
+
+        label_samples = np.random.choice(lab_indexes, size=n, replace=False)
+        val_samples = np.random.choice(val_indexes, size=n, replace=False)
+
+        self.data = [(i, 1) for i in label_samples] + [(i, 0) for i in val_samples]
+
+    def __len__(self):
+        return len(self.data)
+
+    def __getitem__(self, idx):
+        index, label = self.data[idx]
+        return (torch.from_numpy(self.features[index]).float(), label)
+
 
 class SVMDataset(Dataset):
 
