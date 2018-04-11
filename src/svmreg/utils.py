@@ -100,7 +100,7 @@ def validation_metrics(net, val_dataloader, writer, gen_iterations):
         p.requires_grad = True
     net.train()
 
-def check_performance(net, val_dataset, y, writer, args, gen_iterations):
+def check_performance(net, val_dataset, y, writer, args, gen_iterations, refit=False):
     # save computation
     for p in net.parameters():
         p.requires_grad = False
@@ -111,14 +111,14 @@ def check_performance(net, val_dataset, y, writer, args, gen_iterations):
     # get regressed classification
     x = val_dataset.features
 
-    svm_params = {'loss' : 'square_hinge', 'dual':False}
+    svm_params = {'loss' : 'squared_hinge', 'dual':False}
     scores = defaultdict(list)
     for sample in (os.path.join(args.w0, 'val', w) \
             for w in os.listdir(os.path.join(args.w0, 'val'))):
         with open(sample, 'rb') as f:
             s = pickle.load(f)
 
-        n, acc = score_svm(s, x, y, net, svm_params=svm_params)
+        n, acc = score_svm(s, x, y, net, svm_params=svm_params, refit=refit)
 
         scores[n].append(acc)
 

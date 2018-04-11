@@ -15,7 +15,7 @@ from torch.autograd import Variable
 from torchvision import transforms
 import argparse
 import pickle
-from net import make_alexnet
+from net import make_alexnet, refit_svm
 import cv2
 from PIL import Image
 from models import SVMRegressor
@@ -25,6 +25,8 @@ parser.add_argument('--image-path', type=str, default='data/jpg/deli/deli_09_05_
         help='Input image path')
 parser.add_argument('--target-layer', type=str, default='features.11')
 parser.add_argument('--label', type=int)
+parser.add_argument('--data-path', default='data/features.pickle')
+parser.add_argument('--refit', action='store_true')
 
 parser.add_argument('--model_path')
 parser.add_argument('--regressor_path')
@@ -186,13 +188,19 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
 
+    with open(args.data_path, 'rb') as f:
+        data = pickle.load(f)
+
     #### LOAD NET ####
     with open(args.model_path, 'rb') as f:
         d = pickle.load(f)
         w0 = torch.from_numpy(d['w0']).float()
-        num_images = len(d['wrong_i'])
+        correct_i = d['correct_i']
+        wrong_i = d['wrong_i']
 
-        net = make_alexnet(w0)
+    num_images = len(wrong_i)
+
+    net = make_alexnet(w0)
 
     print(f'Trained with {num_images} images')
 
@@ -229,6 +237,19 @@ if __name__ == '__main__':
 
         run(regressed_net, args, 'regressed')
 
+        if args.refit:
+            w1 = refit_svm(w1.cpu().numpy(),
+                    correct_i, 
+                    wrong_i,
+                    data)
+            w1 = torch.from_numpy(w1)
+            regressed_net = make_alexnet(w1)
+
+            if torch.cuda.is_available():
+                regressed_net = regressed_net.cuda()
+
+            run(regressed_net, args, 'regressed_refit')
+
     #### REGRESS ADV NET ####
     regressed_adv = None
     if args.adv_path:
@@ -246,6 +267,19 @@ if __name__ == '__main__':
             regressed_adv = regressed_adv.cuda()
 
         run(regressed_adv, args, 'adv')
+
+        if args.refit:
+            w1 = refit_svm(w1.cpu().numpy(),
+                    correct_i, 
+                    wrong_i,
+                    data)
+            w1 = torch.from_numpy(w1)
+            regressed_adv = make_alexnet(w1)
+
+            if torch.cuda.is_available():
+                regressed_adv = regressed_net.cuda()
+
+            run(regressed_adv, args, 'adv_refit')
 
     #### W1 NET ####
     w1_net = None
