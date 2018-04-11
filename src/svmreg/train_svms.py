@@ -6,6 +6,7 @@ import pickle
 import scipy.io as sio
 import argparse
 import os
+from pathlib import Path
 
 def train(x, correct_i, wrong_i, n_images=None, c=None, loss="squared_hinge", w0=True):
     """
@@ -80,11 +81,11 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
 
-    with open(args.x,'rb') as f:
+    with open(Path(args.x),'rb') as f:
         x = pickle.load(f)
 
     # y = sio.loadmat(args.y)['labels'][0]
-    with open(args.y, 'rb') as f:
+    with open(Path(args.y), 'rb') as f:
         y = pickle.load(f)
 
     labels = np.unique(y)

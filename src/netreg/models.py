@@ -21,21 +21,24 @@ class MLP_100(nn.Module):
         return y
 
 class ConvNet(nn.Module):
-    def __init__(self, bias=False, *args, **kwargs):
+    def __init__(self, bias=False, sigmoid=True, *args, **kwargs):
         super().__init__()
+
+        sigmoid = [nn.Sigmoid()] if sigmoid else []
+
         self.conv = nn.Sequential(
                 nn.Conv2d(1, 5, 5, bias=bias),
-                nn.MaxPool2d(2),
                 nn.ReLU(),
+                nn.MaxPool2d(2),
                 nn.Conv2d(5, 10, 5, bias=bias),
-                nn.MaxPool2d(2),
                 nn.ReLU(),
+                nn.MaxPool2d(2),
                 )
         self.fc = nn.Sequential(
                 nn.Linear(160, 16),
                 nn.ReLU(),
                 nn.Linear(16,1),
-                nn.Sigmoid()
+                *sigmoid,
                 )
     def forward(self, x):
         reshape = x.view(-1, 1, 28, 28)

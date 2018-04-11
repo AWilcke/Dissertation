@@ -288,6 +288,7 @@ if __name__ == '__main__':
                 h1=args.h1,
                 h2=args.h2
                 )
+        regressor.eval()
         # print(regressor)
         regressor.load_state_dict(
                 torch.load(args.regressor_path))

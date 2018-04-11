@@ -114,15 +114,14 @@ def copy_tensor_list_to_net(tensor_list, net):
         current = tensor_list[j]
         
         # shapes match, just copy
-        if current.shape == item.shape:
-            item.copy_(current)
+        if current.nelement() == item.nelement():
+            item.copy_(current.view(item.size()))
         # if not, must be because bias is in last channel
         elif 'weight' in key:
             item.copy_(current[:,:-1])
             j -= 1
         else:
             item.copy_(current[:,-1])
-
 
         j += 1
 

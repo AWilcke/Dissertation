@@ -30,6 +30,7 @@ def get_feature_extractor():
 
     feature_extractor = nn.Sequential(*list(net.classifier.children())[:-1])
     net.classifier = feature_extractor
+    net.eval()
     return net
 
 def main(args):
@@ -46,7 +47,7 @@ def main(args):
         ])
     dataset = datasets.ImageFolder(root=args.root_dir, transform=data_transform)
     dataloader = DataLoader(dataset, batch_size=BATCH_SIZE, 
-        shuffle=False, num_workers=BATCH_SIZE)
+        shuffle=False, num_workers=0, pin_memory=True)
     net = get_feature_extractor()
 
     if torch.cuda.is_available():
